@@ -61,6 +61,53 @@ class Board {
     }
 
     /*
+     * @func executeMonteCarlo
+     * @brief using negamax to pevent conditional  
+     *
+     */
+    func executeMonteCarlo(color:Int) -> Int {
+        var bestValue:Double           = -100
+        var bestPos:Int                = 0
+        let copy:(ko:Int, board:[Int]) = (koPos, board:board)
+        let tryNum:Int                 = 30                  
+        var winRate:Double
+        
+        // try all empty point
+        for (pos, stoneColor) in board.enumerate() {
+            var winSum:Int = 0
+            if (stoneColor != BLANK) {
+                continue
+            }
+
+            if (RETURN_OK != putStone(pos, color, FILL_EYE_ERR)) {
+                continue
+            }
+            
+            // try playout
+            for _ in 1...tryNum {
+                let copy2:(ko:Int, board:[Int]) = (koPos, self.board)
+                let win:Int                     = -1 * executePlayOut((color == BLACK) ? WHITE : BLACK)
+                winSum                         += win
+                board                           = copy2.board
+                koPos                           = copy2.ko
+            }
+
+            winRate = Double(winSum) / Double(tryNum)
+
+            if (winRate > bestValue) {
+                bestValue = winRate
+                bestPos   = pos
+                print("bestPos = (\(Position(bestPos).x), \(Position(bestPos).y)) color=\(color == BLACK ? "BLACK" : "WHITE") bestValue=\(bestValue)")
+            }
+
+            koPos = copy.ko
+            board = copy.board
+        }
+
+        return bestPos
+    }
+    
+    /*
      * @brief actually play out
      * TODO: this method should move the class for thinking routine
      */
@@ -88,7 +135,7 @@ class Board {
                 if (empty.count == 0) {
                     choise = (x:0, y:0)
                 } else {
-                    randnum = Int(rand(UInt32(empty.count))) % empty.count
+                    randnum = Int(rand(UInt32(empty.count)))
                     choise  = empty[randnum]
                 }
 
@@ -105,9 +152,9 @@ class Board {
             }
 
             previous_choice = choise
-            printStone()
+            // printStone()
 
-            print("choise = \(choise) color = \(tempColor) ko = \(koPos)")
+            // print("choise = \(choise) color = \(tempColor) ko = \(koPos)")
             tempColor     = (tempColor == BLACK) ? WHITE : BLACK
         }
 
@@ -214,7 +261,7 @@ class Board {
         // in case of pass
         if (pos == 0) {
             koPos = 0
-            return 0
+            return RETURN_OK
         }
 
         for i in 0..<around.count {
@@ -356,13 +403,18 @@ class Board {
         let blackSum = stoneCount[BLACK] + blackArea
         let whiteSum = stoneCount[WHITE] + whiteArea
 
-        print("blackSum = \(blackSum) (stones = \(stoneCount[BLACK]), area = \(blackArea))")
-        print("whiteSum = \(whiteSum) (stones = \(stoneCount[WHITE]), area = \(whiteArea))")        
+        let score:Double = Double(blackSum - whiteSum)
+        var win          = 0
+        
+        if (score - komi > 0.0) {
+            win = 1
+        }
 
-        if (Double(blackSum - whiteSum) - komi > 0.0) {
-            return BLACK
-        } 
-        return WHITE
+        if (turnColor == WHITE) {
+            win *= -1 
+        }
+        
+        return win
     }
     
     /*
