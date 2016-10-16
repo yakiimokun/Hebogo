@@ -10,5 +10,5 @@ protocol Player {
      * @param color
      * @return choosed position
      */
-    func selectBestMove(color:Int, inout _ board:Board) -> Int
+    func selectBestMove(_ color:Stone, _ board: Board) -> Int
 }

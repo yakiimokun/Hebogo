@@ -1,12 +1,15 @@
-BIN     = hebogo
-TESTBIN = hebogotest
-MOD     = TAP
-MODSRC  = test/tap.swift
-BINSRC  = src/main.swift src/Board.swift
-TESTSRC = $(MODSRC) test/main.swift src/Board.swift
-MODULE  = $(MOD).swiftmodule $(MOD).swiftdoc
-SWIFTC  = swiftc
-SWIFT   = swift
+BIN       = hebogo
+TESTBIN   = hebogotest
+MOD       = TAP
+MODSRC    = test/tap.swift
+COMMONSRC = \
+			src/Board.swift src/Player.swift  src/Math.swift  src/UCTNode.swift  src/ReturnCode.swift \
+			src/Stone.swift src/UCTPlayer.swift src/GTP.swift  src/PrimitiveMonteCarloPlayer.swift
+BINSRC    = src/main.swift $(COMMONSRC)
+TESTSRC   = $(MODSRC) test/main.swift $(COMMONSRC)
+MODULE    = $(MOD).swiftmodule $(MOD).swiftdoc
+SWIFTC    = swiftc -g
+SWIFT     = swift
 
 ifdef SWIFTPATH
 	SWIFTC=$(SWIFTPATH)/swiftc

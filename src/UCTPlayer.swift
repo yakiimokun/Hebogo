@@ -9,26 +9,45 @@
 #endif    
 
 struct UCTPlayer : Player {
-    /*
+     var record:[Int]
+     var moves:Int
+
+     init() {
+         self.record         = [Int](repeating:0, count:1000)
+         self.moves         = 0
+     }
+     
+   /*
      * @func  putMove (color:Int) -> Int
      * @param color
      * @return choosed position
      */
-     func selectBestMove(color:Int, inout _ board:Board) -> Int {
-        var max:Int         = -999
-        var bestMove:Int    = 0
-        let trials:Int      = 1000
-        var uctNode:UCTNode = createNodes(board)
+     func selectBestMove(_ color:Stone, _ board: Board) -> Int {
+        var max:Double      = -999
+        var bestMove:Int   = 0
+        var root:UCTNode = UCTNode(0, 0, 0)
+        let training:Int       = 10000
+        
+        expandChild(&root, color, board)
 
-        for _ in 1...trials {
+        // choose UCB
+        while root.playout < training {
             var copyBoard:Board = board
-            searchUCT(color, &uctNode, &copyBoard)
-        }
+            var currentColor          = color
 
-        for child in uctNode.children {
-            if (child.games > max) {
+            let candidate:UCTNode? = searchCandidate(1, root, &currentColor, &copyBoard)
+
+            if (candidate != nil) {
+                let win:Int = doPlayOut(candidate!.move, color, &copyBoard)
+                candidate!.propagateResult(1, win)
+            }
+        }
+        
+        for child in root.children {
+            let rate:Double = Double(child.win) / Double(child.playout) 
+            if (rate > max) {
                 bestMove = child.move
-                max      = child.games
+                max             = rate
             }
         }
 
@@ -39,94 +58,99 @@ struct UCTPlayer : Player {
      * @brief search UCT
      * @return 
      */
-     func searchUCT(color:Int, inout _ node:UCTNode, inout _ board:Board) -> Int {
-         var ret:Int
-         var win:Int
-         var selectedIndex:Int = 0
+     func expandChild(_ node:inout UCTNode, _ color:Stone,  _ board: Board) {
+         var totalPlayOut:Int = 0
+         var totalWin:Int          = 0
          
-         while(true) {
-             selectedIndex = selectBestUCBIndex(node, &board)
-             ret           = board.putStone(node.children[selectedIndex].move, color, board.FILL_EYE_ERR)
-            
-             if (ret == board.RETURN_OK) {
-                 break
-             }
-
-             node.children[selectedIndex].move = board.ILLEGAL
+         if (node.children.count != 0) {
+             return
          }
 
-         if (node.children[selectedIndex].games <= 0) {
-             win = -1 * board.executePlayOut(board.flipColor(color))
-         } else {
-             if (node.children[selectedIndex].node == nil) {
-                 node.children[selectedIndex].node = createNodes(board)
-             }
-
-             win = -1 * searchUCT(board.flipColor(color), &node.children[selectedIndex].node!, &board)
-         }
-
-         // update winRate
-         node.children[selectedIndex].rate   = (node.children[selectedIndex].rate *
-                                                  Double(node.children[selectedIndex].games) + Double(win)) /
-                                               (Double(node.children[selectedIndex].games) + 1.0)
-         node.children[selectedIndex].games += 1
-         node.gamesSUM                      += 1
-
-         // print("color = \(color), rate = \(node.children[selectedIndex].rate), games = \(node.children[selectedIndex].games), win = \(win)")                  
-         return win
-    }
-
-    /*
-     * @brief select best UCB
-     */
-     func selectBestUCBIndex(pNode:UCTNode, inout _ board:Board) -> Int {
-         var UCB:Double              = 0.0
-         var maxUCB:Double           = -999.0
-         var selectedIndex:Int       = -1
-
-         for (i, child) in pNode.children.enumerate() {
-             if (child.move == board.ILLEGAL) {
+         for (pos, color) in board.squares.enumerated() {
+             if (color != .BLANK) {
                  continue
              }
 
-             if (child.games == 0) {
-                 UCB = 10000.0 + Double(rand(0x7fff));
-             } else {
-                 let C:Double = 1.0
-                 UCB = child.rate + C * sqrt(log(Double(pNode.gamesSUM)) / Double(child.games))
-             }
+             var copy:Board            = board
+             let child:UCTNode    = UCTNode(pos, 1,  doPlayOut(pos, color, &copy))
+             totalPlayOut             += 1
+             totalWin                      += child.win
 
-             if (UCB > maxUCB) {
-                 maxUCB        = UCB
-                 selectedIndex = i
-             }
+             node.addChild(child) 
          }
 
-         if (selectedIndex == -1) {
-             exit(0)
-         }
-         return selectedIndex
+         node.propagateResult(totalPlayOut, totalWin)
      }
 
     /*
-     * @brief  create new Node
-     * @param  board
-     * @return node 
+     * @brief actually play out
+     * TODO: this method should move the class for thinking routine
      */
-     func createNodes(board:Board) -> UCTNode {
-         var node = UCTNode(0)
+     func doPlayOut(_ pos:Int,  _ turnColor:Stone, _ board:inout Board) -> Int {
+        // to prevent the eternal loop by triple ko                
+        var tempColor:Stone      = turnColor
+        var previous_choice:Int = 0
+        let trials:Int                         = board.squaresSize * board.squaresSize + 200
 
-         for y in 1...board.squaresSize {
-             for x in 1...board.squaresSize {
-                 if (board.getColor(x, y) != board.BLANK) {
-                     continue
-                 }
+        let ret:ReturnCode = board.putStone(pos, turnColor, .FOR_PLAYOUT)
+        if (ret != .RETURN_OK) {
+            return -1
+        }
+        
+        var choice:Int       = 0
+        for _ in 1...trials {
+            while (true) {
+                var ret:ReturnCode
+                var index:Int = -1
 
-                 node.children.append(UCTChild(board.Position(x, y)))
+                if (board.empty.count == 0) {
+                    choice = 0
+                } else {
+                    index    = Int(rand()) % Int(board.empty.count)
+                    choice  = board.empty[index]
+                }
+
+                ret = board.putStone(choice, tempColor, .FOR_PLAYOUT)
+                if (ret == .RETURN_OK) {
+                    break
+                }
+
+                if (index != -1) {
+                    board.empty.remove(at:index)
+                }
+            }
+
+            if (choice == 0 && previous_choice == 0) {
+                break;
+            }
+            
+            previous_choice = choice
+            // board.printStone()
+
+            // print("choice = \(choice) color = \(tempColor) ko = \(koPos)")
+            tempColor     = (tempColor == .BLACK) ? .WHITE : .BLACK
+        }
+
+        return board.countScore(turnColor)
+     }
+
+     func searchCandidate(_ sign:Double, _ parent:UCTNode, _ turnColor:inout Stone, _ board:inout Board) -> UCTNode {
+         var candidate:UCTNode = parent.selectChild(sign)
+         var ret:ReturnCode
+
+         if (board.empty.count != 0) { 
+             ret               = board.putStone(candidate.move, turnColor, .FOR_PLAYOUT)
+             if (ret != .RETURN_OK) {
+                 return candidate
              }
+
+             turnColor = (turnColor == .BLACK) ? .WHITE : .BLACK
+
+             expandChild(&candidate, turnColor, board)
+
+             candidate = searchCandidate(-1 * sign, candidate, &turnColor, &board)
          }
 
-         node.children.append(UCTChild(0))
-         return node
+         return candidate
      }
 }
