@@ -1,3 +1,0 @@
-enum ReturnCode : Int {
-    case RETURN_OK = 0, RETURN_SUICIDE, RETURN_KO, RETURN_EYE, RETURN_EXIST
-}
