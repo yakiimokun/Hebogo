@@ -1,0 +1,5 @@
+{
+    "katago_path": "/path/to/katago", 
+    "model_path": "/path/to/model.bin.gz", 
+    "config_path": "/path/to/gtp_setting.cfg" 
+}
