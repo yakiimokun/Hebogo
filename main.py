@@ -18,17 +18,21 @@ def main():
         root.destroy()
         return
     
-    # 設定ファイルを読み込む
-    with open("config.json", "r") as f:
-        config = json.load(f)
-    
-    katago_path = config["katago_path"]
-    model_path = config["model_path"]
-    config_path = config["config_path"]
-    
     # KataGoプロセスの初期化
     gtp_client = None
     if settings.result["black_type"] == "AI" or settings.result["white_type"] == "AI":
+        # Human vs Human では設定ファイルもGTPエンジンも使用しない。
+        try:
+            with open("config.json", "r") as f:
+                config = json.load(f)
+            katago_path = config["katago_path"]
+            model_path = config["model_path"]
+            config_path = config["config_path"]
+        except (OSError, json.JSONDecodeError, KeyError) as error:
+            messagebox.showerror("error", f"Failed to load config.json: {error}")
+            root.destroy()
+            return
+
         if not os.path.exists(katago_path):
             messagebox.showerror("error", "KataGo executable not found")
             root.destroy()
