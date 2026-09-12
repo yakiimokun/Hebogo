@@ -114,6 +114,25 @@ class RandomGTPEngine:
             return None
         return None
 
+    # GUIからKataGo用クライアントと同じ形で呼び出すためのラッパー。
+    def genmove(self, color):
+        return self.send_command(f"genmove {color}")
+
+    def play(self, color, vertex):
+        return self.send_command(f"play {color} {vertex}") is not None
+
+    def set_board_size(self, size):
+        return self.send_command(f"boardsize {size}") is not None
+
+    def komi(self, value):
+        return self.send_command(f"komi {value}") is not None
+
+    def get_final_score(self):
+        return self.send_command("final_score")
+
+    def showboard(self):
+        return [row[:] for row in self.board], self.black_captures, self.white_captures
+
     def run(self, input_stream=sys.stdin, output_stream=sys.stdout):
         """標準入出力で GTP 2 の要求を処理する。"""
         for line in input_stream:

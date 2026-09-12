@@ -34,14 +34,18 @@ class SettingsDialog:
         
         # 黒番の設定
         ttk.Label(self.dialog, text="black:").pack(pady=10)
-        self.black_type = ttk.Combobox(self.dialog, values=["player", "AI"], state="readonly")
+        self.black_type = ttk.Combobox(
+            self.dialog, values=["player", "Random AI", "KataGo"], state="readonly"
+        )
         self.black_type.set("player")
         self.black_type.pack(pady=5)
         
         # 白番の設定
         ttk.Label(self.dialog, text="white:").pack(pady=10)
-        self.white_type = ttk.Combobox(self.dialog, values=["player", "AI"], state="readonly")
-        self.white_type.set("AI")
+        self.white_type = ttk.Combobox(
+            self.dialog, values=["player", "Random AI", "KataGo"], state="readonly"
+        )
+        self.white_type.set("Random AI")
         self.white_type.pack(pady=5)
         
         # 決定ボタン
@@ -57,11 +61,6 @@ class SettingsDialog:
             black_type = self.black_type.get()
             white_type = self.white_type.get()
             
-            # 少なくとも一方はプレーヤーであることを確認
-            if black_type == "AI" and white_type == "AI":
-                messagebox.showerror("error", "at least one player must be human")
-                return
-                
             self.result = {
                 "board_size": board_size,
                 "komi": komi,
@@ -70,4 +69,4 @@ class SettingsDialog:
             }
             self.dialog.destroy()
         except ValueError:
-            messagebox.showerror("error", "invalid value") 
+            messagebox.showerror("error", "invalid value")

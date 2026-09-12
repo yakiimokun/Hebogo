@@ -8,23 +8,17 @@ from .gtp_client import GTPClient
 from .rules import KO, OCCUPIED, OUT_OF_BOUNDS, SUICIDE, calculate_score_japanese, play_move
 
 class GoGameApp:
-    def __init__(self, root, board_size=19, komi=6.5, black_type="player", white_type="AI", gtp_client=None):
+    def __init__(self, root, board_size=19, komi=6.5, black_type="player", white_type="Random AI", gtp_client=None, ai_engines=None):
         self.root = root
         self.board_size = board_size
         self.cell_size = 40
         self.canvas_size = self.cell_size * board_size
         self.komi = komi
 
-        if black_type == "AI":
-            self.black_type = "AI"
-        else:
-            self.black_type = black_type.capitalize()  # 最初の文字を大文字に
-
-        if white_type == "AI":
-            self.white_type = "AI"
-        else:
-            self.white_type = white_type.capitalize()  # 最初の文字を大文字に     
+        self.black_type = "Player" if black_type == "player" else black_type
+        self.white_type = "Player" if white_type == "player" else white_type
         self.gtp_client = gtp_client
+        self.ai_engines = ai_engines or {}
 
         # 石の画像を読み込む（アゲハマ表示用）
         self.load_stone_images()
@@ -186,17 +180,26 @@ class GoGameApp:
         self.draw_board()
         self.update_button_states()
         
-        # KataGoの盤面をクリア
-        if self.gtp_client and not self.is_human_match():
-            self.gtp_client.clear_board()
-            self.gtp_client.set_board_size(self.board_size)
-            self.gtp_client.komi(self.komi)
+        # 使用中のGTPエンジンを同じ初期状態にする。
+        if not self.is_human_match():
+            for engine in self.unique_engines():
+                engine.clear_board()
+                engine.set_board_size(self.board_size)
+                engine.komi(self.komi)
         
         self.check_ai_turn()
 
     def is_human_match(self):
         """両対局者が人間かを返す。"""
         return self.black_type == "Player" and self.white_type == "Player"
+
+    def is_ai_turn(self):
+        """現在の手番にAIエンジンが割り当てられているかを返す。"""
+        return self.current_turn in self.ai_engines
+
+    def unique_engines(self):
+        """同一インスタンスを重複させず、使用中のエンジンを返す。"""
+        return list(dict.fromkeys(self.ai_engines.values()))
 
     def draw_board(self):
         """碁盤を描画"""
@@ -221,12 +224,13 @@ class GoGameApp:
                 elif self.board[y][x] == -1:
                     self.draw_single_stone(x, y, "white")
 
-    def update_board_from_gtp(self):
+    def update_board_from_gtp(self, engine=None):
         """GTPの盤面状態を取得して反映"""
-        if not self.gtp_client:
+        engine = engine or self.gtp_client
+        if not engine:
             return
 
-        board, black_captures, white_captures = self.gtp_client.showboard()
+        board, black_captures, white_captures = engine.showboard()
         if board:
             self.board = board
             self.black_captures = black_captures
@@ -240,8 +244,7 @@ class GoGameApp:
             return
 
         # 現在の手番がAIの場合は処理しない
-        if (self.current_turn == 1 and self.black_type == "AI") or \
-           (self.current_turn == -1 and self.white_type == "AI"):
+        if self.is_ai_turn():
             return
 
         # クリック位置を取得
@@ -279,7 +282,7 @@ class GoGameApp:
                 self.update_captures()
 
             # KataGoに手を送信
-            elif self.gtp_client and self.board[y][x] == 0:
+            elif self.ai_engines and self.board[y][x] == 0:
                 color = "black" if self.current_turn == 1 else "white"
 
                 if x > 7:
@@ -288,7 +291,9 @@ class GoGameApp:
                     offset_x = x
 
                 vertex = f"{chr(97+offset_x)}{self.board_size-y}"
-                success = self.gtp_client.play(color, vertex)
+                success = all(
+                    engine.play(color, vertex) for engine in self.unique_engines()
+                )
                 
                 # GTPからエラーが返された場合、元の状態に戻す
                 if not success:
@@ -297,7 +302,7 @@ class GoGameApp:
                     return
                 
                 # GTPの盤面状態を反映
-                self.update_board_from_gtp()
+                self.update_board_from_gtp(self.unique_engines()[0])
 
             else:
                 return
@@ -316,21 +321,27 @@ class GoGameApp:
         if self.game_over:
             return
 
-        if (self.current_turn == 1 and self.black_type == "AI") or \
-           (self.current_turn == -1 and self.white_type == "AI"):
-            self.ai_turn()
+        if self.is_ai_turn():
+            # AI同士でも再帰呼び出しにならないようイベントループへ戻す。
+            self.root.after(10, self.ai_turn)
 
     def ai_turn(self):
         """AIの手番を実行"""
-        if not self.gtp_client:
+        engine = self.ai_engines.get(self.current_turn)
+        if not engine:
             return
 
         # KataGoに次の手を問い合わせ
         color = "black" if self.current_turn == 1 else "white"
-        response = self.gtp_client.genmove(color)
+        response = engine.genmove(color)
+        if response:
+            response = response.lower()
         
         if response == "pass":
-            self.handle_pass(self.current_turn)
+            for other in self.unique_engines():
+                if other is not engine:
+                    other.play(color, "pass")
+            self.handle_pass(self.current_turn, send_to_engines=False)
             return
             
         if response == "resign":
@@ -338,6 +349,12 @@ class GoGameApp:
             return
         
         if response:
+            for other in self.unique_engines():
+                if other is not engine and not other.play(color, response):
+                    messagebox.showerror("GTP Error", "The other engine rejected the AI move.")
+                    self.game_over = True
+                    return
+
             # 座標を変換 (例: "d4" -> x=3, y=15)
             if response[0] > 'h':
                 x = ord(response[0]) - ord('a') - 1
@@ -348,7 +365,7 @@ class GoGameApp:
             if 0 <= x < self.board_size and 0 <= y < self.board_size:
                 
                 # GTPの盤面状態を反映
-                self.update_board_from_gtp()
+                self.update_board_from_gtp(engine)
 
                 # パスの状態をリセット
                 self.last_move_was_pass = False
@@ -408,7 +425,7 @@ class GoGameApp:
             return
 
         # 白のボタン表示制御
-        if self.white_type == "AI":
+        if -1 in self.ai_engines:
             self.white_pass_button.pack_forget()
             self.white_resign_button.pack_forget()
         else:
@@ -422,7 +439,7 @@ class GoGameApp:
                 self.white_resign_button.config(state="disabled")
 
         # 黒のボタン表示制御
-        if self.black_type == "AI":
+        if 1 in self.ai_engines:
             self.black_pass_button.pack_forget()
             self.black_resign_button.pack_forget()
         else:
@@ -438,15 +455,16 @@ class GoGameApp:
         # 手番表示を更新
         self.update_turn_indicators()
 
-    def handle_pass(self, player):
+    def handle_pass(self, player, send_to_engines=True):
         """パスを処理"""
         if self.game_over or self.current_turn != player:
             return
 
-        # KataGoにパスを送信
-        if self.gtp_client:
+        # 対局に参加する全GTPエンジンへパスを送信
+        if send_to_engines and self.ai_engines:
             color = "black" if player == 1 else "white"
-            self.gtp_client.play(color, "pass")
+            for engine in self.unique_engines():
+                engine.play(color, "pass")
 
         if self.last_move_was_pass:
             self.game_over = True
@@ -473,9 +491,9 @@ class GoGameApp:
 
     def show_final_score(self):
         """最終スコアを表示"""
-        if self.gtp_client and not self.is_human_match():
+        if self.ai_engines and not self.is_human_match():
             # KataGoにスコアを問い合わせ
-            score_response = self.gtp_client.get_final_score()
+            score_response = self.unique_engines()[0].get_final_score()
             if score_response:
                 messagebox.showinfo("Game Over", f"Both players passed.\n\nFinal score: {score_response}")
                 self.update_button_states()
