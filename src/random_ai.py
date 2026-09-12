@@ -1,33 +1,22 @@
-from .board_utils import BoardUtils
 import random
+from typing import Optional
+
+from .rules import BLACK, WHITE, Board, Point, legal_moves
 
 class RandomAI:
-    """ランダムに合法手を選ぶAI"""
-    def __init__(self, color):
+    """盤外・着手済み・自殺手・劫を除いた候補から一手を選ぶ。"""
+
+    def __init__(self, color: int, rng: Optional[random.Random] = None):
+        if color not in (BLACK, WHITE):
+            raise ValueError("color must be BLACK (1) or WHITE (-1)")
         self.color = color
-        self.history = []  # 局面履歴
+        self.rng = rng or random.Random()
 
-    def get_move(self, board):
-        """合法手からランダムに選ぶ"""
-        legal_moves = self.get_legal_moves(board, self.color)
-        return random.choice(legal_moves) if legal_moves else (None, None)
+    def get_move(self, board: Board, previous_board=None, history=None) -> Optional[Point]:
+        """合法手を返す。候補がなければパスを表す ``None`` を返す。"""
+        candidates = legal_moves(board, self.color, previous_board, history)
+        return self.rng.choice(candidates) if candidates else None
 
-    def get_legal_moves(self, board, color):
-        """
-        合法手を計算
-        - 自殺手、劫を除外
-        """
-        size = len(board)
-        legal_moves = []
-        opponent_color = 'B' if color == 'W' else 'W'
-
-        for y in range(size):
-            for x in range(size):
-                if board[y][x] == '.':
-                    if not BoardUtils.is_suicide(board, x, y, color) and not BoardUtils.is_ko_violation(board, x, y, color, self.history):
-                        legal_moves.append((x, y))
-        return legal_moves
-
-    def update_history(self, board):
-        """現在の盤面を履歴に追加"""
-        self.history.append(BoardUtils.board_to_string(board))
+    def get_legal_moves(self, board: Board, color=None, previous_board=None, history=None):
+        """テストや盤面解析向けに合法手の一覧を返す。"""
+        return legal_moves(board, self.color if color is None else color, previous_board, history)
