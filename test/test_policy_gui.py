@@ -39,6 +39,24 @@ class PolicyGUIStartupTest(unittest.TestCase):
         self.assertIs(app_class.call_args.kwargs["ai_engines"][-1], fake_engine)
         fake_engine.close.assert_called_once()
 
+    def test_selects_model_for_board_size(self):
+        fake_engine = MagicMock()
+        engine_class = MagicMock(return_value=fake_engine)
+        module = types.ModuleType("src.policy_gtp_engine")
+        module.PolicyGTPEngine = engine_class
+        config = {
+            "policy_model_path": "old_19.pt",
+            "policy_model_paths": {"9": "model_9.pt", "19": "model_19.pt"},
+        }
+        with patch.object(main, "Tk", return_value=self.root), \
+             patch.object(main, "SettingsDialog", return_value=self.settings), \
+             patch.object(main, "GoGameApp"), \
+             patch.object(main.os.path, "isfile", return_value=True), \
+             patch("builtins.open", mock_open(read_data=json.dumps(config))), \
+             patch.dict(sys.modules, {"src.policy_gtp_engine": module}):
+            main.main()
+        engine_class.assert_called_once_with(board_size=9, komi=6.5, model_path="model_9.pt")
+
     def test_missing_model_setting_shows_error_and_does_not_start_game(self):
         with patch.object(main, "Tk", return_value=self.root), \
              patch.object(main, "SettingsDialog", return_value=self.settings), \

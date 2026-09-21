@@ -30,7 +30,7 @@
 ## GUI・GTP連携
 
 - 設定画面の選択名は `Policy AI`
-- `config.json` の `policy_model_path` に学習済み重みのパスを指定する
+- `config.json` の `policy_model_paths` に盤面サイズ別の学習済み重みを指定する。従来の `policy_model_path` は対応サイズの設定がない場合に使用する
 - `PolicyGTPEngine(board_size=19, komi=6.5, model_path=None, model=None)` を使う
 - `model_path` とテスト用の注入モデルがどちらも無い場合はエラーとし、未学習モデルで対局しない
 - モデルファイルは `PolicyNetwork(board_size)` の `state_dict` とする
