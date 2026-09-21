@@ -13,6 +13,8 @@ class GoGameApp:
         self.board_size = board_size
         self.cell_size = 40
         self.canvas_size = self.cell_size * board_size
+        self.board_left = 220
+        self.board_top = 50
         self.komi = komi
 
         self.black_type = "Player" if black_type == "player" else black_type
@@ -22,13 +24,6 @@ class GoGameApp:
 
         # 石の画像を読み込む（アゲハマ表示用）
         self.load_stone_images()
-
-        # アゲハマ表示用のキャンバス（透明対応）
-        self.white_captures_canvas = Canvas(root, width=self.cell_size * 3, height=self.cell_size, bg=None, highlightthickness=0)
-        self.white_captures_canvas.place(x=20, y=50)  # 左上に表示
-
-        self.black_captures_canvas = Canvas(root, width=self.cell_size * 3, height=self.cell_size, bg=None, highlightthickness=0)
-        self.black_captures_canvas.place(x=self.canvas_size + 220, y=self.canvas_size + 50)  # 右下に表示
 
         # アゲハマ表示
         self.black_captures = 0  # 黒のアゲハマ
@@ -40,7 +35,7 @@ class GoGameApp:
         self.current_turn = 1  # 1: 黒, -1: 白
 
         # GUI設定
-        self.root.geometry(f"{self.canvas_size + 400}x{self.canvas_size + 180}")  # ウィンドウサイズを大きく
+        self.root.geometry(f"{self.board_left + self.canvas_size + 200}x{self.canvas_size + 180}")
         self.root.title("Hebogo")        
 
         # メニュー追加
@@ -48,7 +43,7 @@ class GoGameApp:
 
         # 盤面表示
         self.canvas = Canvas(root, width=self.canvas_size, height=self.canvas_size, bg="lightyellow")
-        self.canvas.place(x=160, y=50)  # 盤面の位置を調整
+        self.canvas.place(x=self.board_left, y=self.board_top)
 
         # 白の情報表示（左上）
         self.white_frame = tk.Frame(root)
@@ -75,7 +70,7 @@ class GoGameApp:
 
         # 黒の情報表示（右下）
         self.black_frame = tk.Frame(root)
-        self.black_frame.place(x=self.canvas_size + 210, y=self.canvas_size - 160)  # 碁盤の右下に合わせる
+        self.black_frame.place(x=self.board_left + self.canvas_size + 40, y=self.canvas_size - 160)
         
         # 黒のプレーヤー名
         self.black_label = Label(self.black_frame, text="", font=("Arial", 14), fg="black")
@@ -215,6 +210,18 @@ class GoGameApp:
                 self.cell_size * 0.5, self.cell_size * (i + 0.5), 
                 self.cell_size * (self.board_size - 0.5), self.cell_size * (i + 0.5), 
                 fill="black")
+
+        if self.board_size == 19:
+            # 4・10・16路の交点（中央が天元）に星を描く。
+            for y in (3, 9, 15):
+                for x in (3, 9, 15):
+                    cx = self.cell_size * (x + 0.5)
+                    cy = self.cell_size * (y + 0.5)
+                    radius = 4
+                    self.canvas.create_oval(
+                        cx - radius, cy - radius, cx + radius, cy + radius,
+                        fill="black", outline="black",
+                    )
 
         # 石を描画
         for y in range(self.board_size):
