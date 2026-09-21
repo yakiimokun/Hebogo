@@ -35,7 +35,7 @@ class SettingsDialog:
         # 黒番の設定
         ttk.Label(self.dialog, text="black:").pack(pady=10)
         self.black_type = ttk.Combobox(
-            self.dialog, values=["player", "Random AI", "KataGo"], state="readonly"
+            self.dialog, values=["player", "Random AI", "Policy AI", "KataGo"], state="readonly"
         )
         self.black_type.set("player")
         self.black_type.pack(pady=5)
@@ -43,7 +43,7 @@ class SettingsDialog:
         # 白番の設定
         ttk.Label(self.dialog, text="white:").pack(pady=10)
         self.white_type = ttk.Combobox(
-            self.dialog, values=["player", "Random AI", "KataGo"], state="readonly"
+            self.dialog, values=["player", "Random AI", "Policy AI", "KataGo"], state="readonly"
         )
         self.white_type.set("Random AI")
         self.white_type.pack(pady=5)

@@ -225,18 +225,32 @@ class GoGameApp:
                     self.draw_single_stone(x, y, "white")
 
     def update_board_from_gtp(self, engine=None):
-        """GTPの盤面状態を取得して反映"""
-        engine = engine or self.gtp_client
-        if not engine:
+        """全エンジンの盤面一致を確認し、GTPの盤面を描画する。"""
+        engines = self.unique_engines()
+        if engine is not None and engine not in engines:
+            engines.insert(0, engine)
+        if not engines:
             return
 
-        board, black_captures, white_captures = engine.showboard()
-        if board:
-            self.board = board
-            self.black_captures = black_captures
-            self.white_captures = white_captures
-            self.draw_board()
-            self.update_captures()
+        snapshots = {}
+        for current in engines:
+            board, black_captures, white_captures = current.showboard()
+            if (board is None or len(board) != self.board_size or
+                    any(len(row) != self.board_size or
+                        any(stone not in (0, 1, -1) for stone in row)
+                        for row in board)):
+                raise ValueError("GTP engine returned an invalid board")
+            snapshots[current] = (board, black_captures, white_captures)
+
+        selected = engine if engine is not None else engines[0]
+        board, black_captures, white_captures = snapshots[selected]
+        if any(snapshot != snapshots[selected] for snapshot in snapshots.values()):
+            raise ValueError("GTP engines have different board positions or captures")
+        self.board = [row[:] for row in board]
+        self.black_captures = black_captures
+        self.white_captures = white_captures
+        self.draw_board()
+        self.update_captures()
 
     def handle_click(self, event):
         """人間の手を処理"""
@@ -281,7 +295,7 @@ class GoGameApp:
                 self.draw_board()
                 self.update_captures()
 
-            # KataGoに手を送信
+            # 使用中の全エンジンに人間の手を送信する。
             elif self.ai_engines and self.board[y][x] == 0:
                 color = "black" if self.current_turn == 1 else "white"
 
@@ -291,18 +305,25 @@ class GoGameApp:
                     offset_x = x
 
                 vertex = f"{chr(97+offset_x)}{self.board_size-y}"
-                success = all(
-                    engine.play(color, vertex) for engine in self.unique_engines()
-                )
-                
-                # GTPからエラーが返された場合、元の状態に戻す
-                if not success:
-                    # エラー時は警告メッセージを表示
-                    messagebox.showerror("Invalid Move", "This move is not allowed.")
+                engines = self.unique_engines()
+                accepted = 0
+                try:
+                    for engine in engines:
+                        if not engine.play(color, vertex):
+                            raise ValueError("GTP engine rejected the move")
+                        accepted += 1
+                except Exception as error:
+                    if accepted:
+                        self.stop_on_ai_error(f"GTP engines are out of sync: {error}")
+                    else:
+                        messagebox.showerror("Invalid Move", "This move is not allowed.")
                     return
-                
-                # GTPの盤面状態を反映
-                self.update_board_from_gtp(self.unique_engines()[0])
+
+                try:
+                    self.update_board_from_gtp(engines[0])
+                except Exception as error:
+                    self.stop_on_ai_error(f"Could not synchronize the boards: {error}")
+                    return
 
             else:
                 return
@@ -327,20 +348,33 @@ class GoGameApp:
 
     def ai_turn(self):
         """AIの手番を実行"""
+        if self.game_over:
+            return
         engine = self.ai_engines.get(self.current_turn)
         if not engine:
             return
 
-        # KataGoに次の手を問い合わせ
+        # GTPエンジンに次の手を問い合わせる。例外はTkのイベントループへ漏らさない。
         color = "black" if self.current_turn == 1 else "white"
-        response = engine.genmove(color)
-        if response:
-            response = response.lower()
+        try:
+            response = engine.genmove(color)
+        except Exception as error:
+            self.stop_on_ai_error(f"AI could not generate a move: {error}")
+            return
+        if not isinstance(response, str) or not response.strip():
+            self.stop_on_ai_error("AI returned an empty or invalid move.")
+            return
+        response = response.strip().lower()
         
         if response == "pass":
-            for other in self.unique_engines():
-                if other is not engine:
-                    other.play(color, "pass")
+            try:
+                for other in self.unique_engines():
+                    if other is not engine and not other.play(color, "pass"):
+                        raise ValueError("The other engine rejected the AI pass.")
+                self.update_board_from_gtp(engine)
+            except Exception as error:
+                self.stop_on_ai_error(str(error))
+                return
             self.handle_pass(self.current_turn, send_to_engines=False)
             return
             
@@ -349,23 +383,33 @@ class GoGameApp:
             return
         
         if response:
-            for other in self.unique_engines():
-                if other is not engine and not other.play(color, response):
-                    messagebox.showerror("GTP Error", "The other engine rejected the AI move.")
-                    self.game_over = True
-                    return
-
-            # 座標を変換 (例: "d4" -> x=3, y=15)
-            if response[0] > 'h':
-                x = ord(response[0]) - ord('a') - 1
-            else:
-                x = ord(response[0]) - ord('a')
-            y = self.board_size - int(response[1:])
+            try:
+                # 座標を検証してから他エンジンへ転送する。
+                column = response[0]
+                if column < "a" or column > "t" or column == "i":
+                    raise ValueError("Invalid GTP coordinate")
+                x = ord(column) - ord("a") - (1 if column > "i" else 0)
+                y = self.board_size - int(response[1:])
+                if not (0 <= x < self.board_size and 0 <= y < self.board_size):
+                    raise ValueError("GTP coordinate is outside the board")
+                for other in self.unique_engines():
+                    if other is not engine and not other.play(color, response):
+                        raise ValueError("The other engine rejected the AI move.")
+            except (ValueError, TypeError, IndexError) as error:
+                self.stop_on_ai_error(f"AI returned an invalid move ({response}): {error}")
+                return
+            except Exception as error:
+                self.stop_on_ai_error(f"Could not synchronize the AI move: {error}")
+                return
             
             if 0 <= x < self.board_size and 0 <= y < self.board_size:
                 
                 # GTPの盤面状態を反映
-                self.update_board_from_gtp(engine)
+                try:
+                    self.update_board_from_gtp(engine)
+                except Exception as error:
+                    self.stop_on_ai_error(f"Could not read the AI board: {error}")
+                    return
 
                 # パスの状態をリセット
                 self.last_move_was_pass = False
@@ -375,6 +419,12 @@ class GoGameApp:
                 self.update_button_states()
                 self.root.update()
                 self.check_ai_turn()
+
+    def stop_on_ai_error(self, detail):
+        """AI障害時に対局を停止し、メインスレッド上で理由を表示する。"""
+        self.game_over = True
+        self.update_button_states()
+        messagebox.showerror("AI Error", detail)
 
     def update_captures(self):
         """アゲハマを更新"""
@@ -463,8 +513,14 @@ class GoGameApp:
         # 対局に参加する全GTPエンジンへパスを送信
         if send_to_engines and self.ai_engines:
             color = "black" if player == 1 else "white"
-            for engine in self.unique_engines():
-                engine.play(color, "pass")
+            try:
+                for engine in self.unique_engines():
+                    if not engine.play(color, "pass"):
+                        raise ValueError("GTP engine rejected the pass")
+                self.update_board_from_gtp(self.unique_engines()[0])
+            except Exception as error:
+                self.stop_on_ai_error(f"Could not synchronize the pass: {error}")
+                return
 
         if self.last_move_was_pass:
             self.game_over = True

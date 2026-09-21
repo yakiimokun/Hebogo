@@ -19,18 +19,34 @@ def main():
         root.destroy()
         return
     
-    # KataGoが選択された場合だけ設定を読み、プロセスを初期化する。
+    # 外部モデルを使うAIが選択された場合だけ設定を読む。
     player_types = (settings.result["black_type"], settings.result["white_type"])
     katago_client = None
-    if "KataGo" in player_types:
+    policy_engine = None
+    config = {}
+    if "KataGo" in player_types or "Policy AI" in player_types:
         try:
             with open("config.json", "r") as f:
                 config = json.load(f)
-            katago_path = config["katago_path"]
-            model_path = config["model_path"]
-            config_path = config["config_path"]
-        except (OSError, json.JSONDecodeError, KeyError) as error:
+        except (OSError, json.JSONDecodeError) as error:
             messagebox.showerror("error", f"Failed to load config.json: {error}")
+            root.destroy()
+            return
+
+    if "KataGo" in player_types:
+        try:
+            katago_config = config["katago"]
+            katago_path = katago_config["binary_path"]
+            model_path = katago_config["model_path"]
+            config_path = katago_config["config_path"]
+        except (KeyError, TypeError) as error:
+            messagebox.showerror("error", f"Missing KataGo setting in config.json: {error}")
+            root.destroy()
+            return
+
+        if not all(isinstance(path, str) and path.strip() for path in
+                   (katago_path, model_path, config_path)):
+            messagebox.showerror("error", "Invalid KataGo path in config.json")
             root.destroy()
             return
 
@@ -52,11 +68,43 @@ def main():
         # 盤面サイズとコミを設定
         if not katago_client.set_board_size(settings.result["board_size"]):
             messagebox.showerror("error", "Failed to set board size")
+            katago_client.close()
             root.destroy()
             return
         
         if not katago_client.komi(settings.result["komi"]):
             messagebox.showerror("error", "Failed to set komi")
+            katago_client.close()
+            root.destroy()
+            return
+
+    if "Policy AI" in player_types:
+        policy_model_path = config.get("policy_model_path")
+        if not isinstance(policy_model_path, str) or not policy_model_path.strip():
+            messagebox.showerror("Policy AI Error", "Set policy_model_path in config.json to a trained Policy AI model.")
+            if katago_client:
+                katago_client.close()
+            root.destroy()
+            return
+        if not os.path.isfile(policy_model_path):
+            messagebox.showerror("Policy AI Error", f"Policy AI model file not found: {policy_model_path}")
+            if katago_client:
+                katago_client.close()
+            root.destroy()
+            return
+        try:
+            # 通常のGUI起動ではPyTorchを読み込まない。
+            from src.policy_gtp_engine import PolicyGTPEngine
+
+            policy_engine = PolicyGTPEngine(
+                board_size=settings.result["board_size"],
+                komi=settings.result["komi"],
+                model_path=policy_model_path,
+            )
+        except Exception as error:
+            messagebox.showerror("Policy AI Error", f"Could not load Policy AI model: {error}")
+            if katago_client:
+                katago_client.close()
             root.destroy()
             return
     
@@ -69,21 +117,26 @@ def main():
             )
         elif player_type == "KataGo":
             ai_engines[color] = katago_client
+        elif player_type == "Policy AI":
+            ai_engines[color] = policy_engine
 
-    app = GoGameApp(
-        root,
-        board_size=settings.result["board_size"],
-        komi=settings.result["komi"],
-        black_type=settings.result["black_type"],
-        white_type=settings.result["white_type"],
-        gtp_client=katago_client,
-        ai_engines=ai_engines,
-    )
-    root.mainloop()
-    
-    # ゲーム終了時にKataGoプロセスを終了
-    if katago_client:
-        katago_client.close()
+    try:
+        GoGameApp(
+            root,
+            board_size=settings.result["board_size"],
+            komi=settings.result["komi"],
+            black_type=settings.result["black_type"],
+            white_type=settings.result["white_type"],
+            gtp_client=katago_client,
+            ai_engines=ai_engines,
+        )
+        root.mainloop()
+    finally:
+        # 対局終了時には外部プロセス・エンジンを確実に閉じる。
+        for engine in dict.fromkeys(ai_engines.values()):
+            close = getattr(engine, "close", None)
+            if close:
+                close()
 
 if __name__ == "__main__":
     main()

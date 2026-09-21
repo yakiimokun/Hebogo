@@ -1,2 +1,3 @@
 Pillow>=10.0.0  # PILの最新バージョン
 numpy>=1.24.0  # 学習用データの生成と盤面表現
+torch>=2.10.0  # Policy Network の学習と推論

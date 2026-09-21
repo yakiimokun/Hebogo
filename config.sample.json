@@ -1,5 +1,8 @@
 {
-    "katago_path": "/path/to/katago", 
-    "model_path": "/path/to/model.bin.gz", 
-    "config_path": "/path/to/gtp_setting.cfg" 
+    "katago": {
+        "binary_path": "/path/to/katago",
+        "model_path": "/path/to/model.bin.gz",
+        "config_path": "/path/to/gtp_setting.cfg"
+    },
+    "policy_model_path": "/path/to/policy_model.pt"
 }
