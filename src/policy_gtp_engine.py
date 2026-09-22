@@ -7,6 +7,8 @@ import torch
 
 from .policy_ai import PolicyAI
 from .policy_network import PolicyNetwork
+from .policy_value_ai import PolicyValueAI
+from .value_network import ValueNetwork
 from .random_gtp_engine import (
     _COLUMNS,
     color_to_int,
@@ -19,7 +21,10 @@ from .rules import BLACK, calculate_score_japanese, play_move
 class PolicyGTPEngine:
     """学習済みモデルと盤面を保持し、GTP コマンドに応答する。"""
 
-    def __init__(self, board_size=19, komi=6.5, model_path=None, model=None):
+    def __init__(
+        self, board_size=19, komi=6.5, model_path=None, model=None,
+        value_model_path=None, value_model=None,
+    ):
         if not 2 <= board_size <= len(_COLUMNS):
             raise ValueError("unacceptable board size")
         if model is not None and model_path is not None:
@@ -35,7 +40,19 @@ class PolicyGTPEngine:
                 raise ValueError(f"cannot load policy model: {error}") from error
         if getattr(model, "board_size", None) != board_size:
             raise ValueError("board size does not match policy model")
-        self.ai = PolicyAI(model)
+        if value_model is not None and value_model_path is not None:
+            raise ValueError("provide either value_model or value_model_path, not both")
+        if value_model is None and value_model_path is not None:
+            value_model = ValueNetwork(board_size=board_size)
+            try:
+                state_dict = torch.load(value_model_path, map_location="cpu", weights_only=True)
+                value_model.load_state_dict(state_dict)
+            except (OSError, RuntimeError, ValueError, TypeError, pickle.UnpicklingError) as error:
+                raise ValueError(f"cannot load value model: {error}") from error
+        if value_model is not None and getattr(value_model, "board_size", None) != board_size:
+            raise ValueError("board size does not match value model")
+        self.policy_model = model
+        self.ai = PolicyValueAI(model, value_model) if value_model is not None else PolicyAI(model)
         self.board_size = board_size
         self.komi_value = float(komi)
         self.clear_board()
@@ -72,12 +89,15 @@ class PolicyGTPEngine:
             if name == "protocol_version":
                 return "2"
             if name == "name":
-                return "Hebogo Policy AI"
+                return (
+                    "Hebogo PolicyValue AI"
+                    if isinstance(self.ai, PolicyValueAI) else "Hebogo Policy AI"
+                )
             if name == "version":
                 return "1.0"
             if name == "boardsize":
                 size = int(args[0])
-                if size != self.ai.model.board_size:
+                if size != self.policy_model.board_size:
                     raise ValueError("board size does not match policy model")
                 self.board_size = size
                 self.clear_board()

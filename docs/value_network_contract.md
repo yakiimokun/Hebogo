@@ -33,6 +33,8 @@
 - Value モデルが未設定の場合は既存の Policy AI と同じ動作にする。
 - モデルのサイズ不一致や非有限値は明示的なエラーにする。
 - 公開 API は `PolicyValueAI(policy_model, value_model=None, top_k=5, policy_weight=1.0, value_weight=1.0).get_move(board, color, previous_board=None, history=None)` とする。返り値は `(x, y)`、パスは `None`。
+- GUI の選択名は `PolicyValue AI`。`config.json` の `policy_model_paths` と `value_model_paths` から同じ盤面サイズの学習済み重みを読み込む。単一パス設定の `policy_model_path` と `value_model_path` も使える。
+- GUI ではどちらかの重みが未設定・読み込み不能なら対局を開始しない。
 
 ## 並列作業の境界
 

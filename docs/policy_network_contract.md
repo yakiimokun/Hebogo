@@ -29,9 +29,9 @@
 
 ## GUI・GTP連携
 
-- 設定画面の選択名は `Policy AI`
+- 設定画面の選択名は `PolicyValue AI`。Policy 単体の GTP エンジンは従来どおり利用できる
 - `config.json` の `policy_model_paths` に盤面サイズ別の学習済み重みを指定する。従来の `policy_model_path` は対応サイズの設定がない場合に使用する
-- `PolicyGTPEngine(board_size=19, komi=6.5, model_path=None, model=None)` を使う
+- Policy 単体には `PolicyGTPEngine(board_size=19, komi=6.5, model_path=None, model=None)` を使う。GUI は同エンジンに `value_model_path` も渡し、内部で `PolicyValueAI` を呼ぶ
 - `model_path` とテスト用の注入モデルがどちらも無い場合はエラーとし、未学習モデルで対局しない
 - モデルファイルは `PolicyNetwork(board_size)` の `state_dict` とする
 - 学習後に `torch.save(model.state_dict(), path)` で保存する（未学習の重みは対局用に使わない）

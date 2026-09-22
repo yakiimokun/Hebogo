@@ -15,18 +15,26 @@ python3 scripts/train_policy.py --input data/sgf/raw --board-size 19 \
 標準設定で検証するには、対象の盤面サイズの有効なSGFが2棋譜以上必要です。
 1棋譜で学習処理だけを確認する場合は `--validation-fraction 0` を指定できますが、
 その結果から未知の棋譜に対する性能は判断できません。
-学習後、`config.json` の `policy_model_paths` に盤面サイズ別の重みのパスを指定し、
-対局設定で「Policy AI」を選んでください。
-例えば9路と19路を使う場合は次のように設定します。
+GUI の「PolicyValue AI」には、同じ盤面サイズで学習した Policy と Value の両方が必要です。
+Value の学習例は次のとおりです。
+
+```bash
+python3 scripts/train_value.py --input data/sgf/raw --board-size 19 \
+  --output data/sgf/processed/value_19x19.pth
+```
+
+学習後、`config.json` に盤面サイズ別の重みのパスを指定し、
+対局設定で「PolicyValue AI」を選んでください。例えば19路では次のように設定します。
 
 ```json
-"policy_model_paths": {
-  "9": "data/sgf/processed/policy_9x9.pth",
-  "19": "data/sgf/processed/policy_19x19.pth"
+{
+  "policy_model_paths": {"19": "data/sgf/processed/policy_19x19.pth"},
+  "value_model_paths": {"19": "data/sgf/processed/value_19x19.pth"}
 }
 ```
 
-従来の `policy_model_path` も、サイズ別設定がない場合に使用できます。
+従来の `policy_model_path` と単一の `value_model_path` も、サイズ別設定がない場合に使用できます。
+Value の重みが設定されていない場合、GUI はエラーを表示し対局を開始しません。
 
 ## 9路の対戦評価
 

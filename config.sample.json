@@ -7,5 +7,9 @@
     "policy_model_paths": {
         "9": "/path/to/policy_9x9.pth",
         "19": "/path/to/policy_19x19.pth"
+    },
+    "value_model_paths": {
+        "9": "/path/to/value_9x9.pth",
+        "19": "/path/to/value_19x19.pth"
     }
 }

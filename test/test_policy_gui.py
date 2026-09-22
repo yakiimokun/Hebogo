@@ -1,4 +1,4 @@
-"""Policy AIの設定・GUI連携を表示環境なしで確認する。"""
+"""PolicyValue AIの設定・GUI連携を表示環境なしで確認する。"""
 
 import json
 import sys
@@ -19,7 +19,7 @@ class PolicyGUIStartupTest(unittest.TestCase):
             "board_size": 9,
             "komi": 6.5,
             "black_type": "player",
-            "white_type": "Policy AI",
+            "white_type": "PolicyValue AI",
         }
 
     def test_policy_model_is_loaded_only_when_selected(self):
@@ -31,11 +31,11 @@ class PolicyGUIStartupTest(unittest.TestCase):
              patch.object(main, "SettingsDialog", return_value=self.settings), \
              patch.object(main, "GoGameApp") as app_class, \
              patch.object(main.os.path, "isfile", return_value=True), \
-             patch("builtins.open", mock_open(read_data=json.dumps({"policy_model_path": "model.pt"}))), \
+             patch("builtins.open", mock_open(read_data=json.dumps({"policy_model_path": "model.pt", "value_model_path": "value.pt"}))), \
              patch.dict(sys.modules, {"src.policy_gtp_engine": module}):
             main.main()
 
-        engine_class.assert_called_once_with(board_size=9, komi=6.5, model_path="model.pt")
+        engine_class.assert_called_once_with(board_size=9, komi=6.5, model_path="model.pt", value_model_path="value.pt")
         self.assertIs(app_class.call_args.kwargs["ai_engines"][-1], fake_engine)
         fake_engine.close.assert_called_once()
 
@@ -47,6 +47,8 @@ class PolicyGUIStartupTest(unittest.TestCase):
         config = {
             "policy_model_path": "old_19.pt",
             "policy_model_paths": {"9": "model_9.pt", "19": "model_19.pt"},
+            "value_model_path": "old_value_19.pt",
+            "value_model_paths": {"9": "value_9.pt", "19": "value_19.pt"},
         }
         with patch.object(main, "Tk", return_value=self.root), \
              patch.object(main, "SettingsDialog", return_value=self.settings), \
@@ -55,7 +57,7 @@ class PolicyGUIStartupTest(unittest.TestCase):
              patch("builtins.open", mock_open(read_data=json.dumps(config))), \
              patch.dict(sys.modules, {"src.policy_gtp_engine": module}):
             main.main()
-        engine_class.assert_called_once_with(board_size=9, komi=6.5, model_path="model_9.pt")
+        engine_class.assert_called_once_with(board_size=9, komi=6.5, model_path="model_9.pt", value_model_path="value_9.pt")
 
     def test_missing_model_setting_shows_error_and_does_not_start_game(self):
         with patch.object(main, "Tk", return_value=self.root), \
@@ -77,11 +79,24 @@ class PolicyGUIStartupTest(unittest.TestCase):
              patch.object(main, "GoGameApp") as app_class, \
              patch.object(main.messagebox, "showerror") as showerror, \
              patch.object(main.os.path, "isfile", return_value=True), \
-             patch("builtins.open", mock_open(read_data=json.dumps({"policy_model_path": "bad.pt"}))), \
+             patch("builtins.open", mock_open(read_data=json.dumps({"policy_model_path": "bad.pt", "value_model_path": "value.pt"}))), \
              patch.dict(sys.modules, {"src.policy_gtp_engine": module}):
             main.main()
 
         self.assertIn("bad checkpoint", showerror.call_args.args[1])
+        app_class.assert_not_called()
+        self.root.destroy.assert_called_once()
+
+    def test_missing_value_model_stops_startup(self):
+        with patch.object(main, "Tk", return_value=self.root), \
+             patch.object(main, "SettingsDialog", return_value=self.settings), \
+             patch.object(main, "GoGameApp") as app_class, \
+             patch.object(main.messagebox, "showerror") as showerror, \
+             patch.object(main.os.path, "isfile", return_value=True), \
+             patch("builtins.open", mock_open(read_data=json.dumps({"policy_model_path": "model.pt"}))):
+            main.main()
+
+        self.assertIn("value_model_path", showerror.call_args.args[1])
         app_class.assert_not_called()
         self.root.destroy.assert_called_once()
 
@@ -147,7 +162,7 @@ class KataGoConfigTest(unittest.TestCase):
 
 
 class PolicySettingsTest(unittest.TestCase):
-    def test_both_color_selectors_offer_policy_ai(self):
+    def test_both_color_selectors_offer_policy_value_ai(self):
         parent = MagicMock()
         with patch("src.settings_dialog.Toplevel"), \
              patch("src.settings_dialog.ttk.Combobox") as combo:
@@ -158,7 +173,7 @@ class PolicySettingsTest(unittest.TestCase):
             if "player" in call.kwargs["values"]
         ]
         self.assertEqual(len(player_selectors), 2)
-        self.assertTrue(all("Policy AI" in values for values in player_selectors))
+        self.assertTrue(all("PolicyValue AI" in values for values in player_selectors))
 
 
 class PolicyGUITurnTest(unittest.TestCase):
@@ -206,7 +221,7 @@ class MixedEngineSynchronizationTest(unittest.TestCase):
         self.app.board_size = 9
         self.app.current_turn = 1
         self.app.black_type = "KataGo"
-        self.app.white_type = "Policy AI"
+        self.app.white_type = "PolicyValue AI"
         self.app.last_move_was_pass = False
         self.app.board = [[0] * 9 for _ in range(9)]
         self.app.root = MagicMock()

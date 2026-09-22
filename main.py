@@ -8,18 +8,28 @@ import os
 import json
 
 
-def policy_model_path_for_size(config, board_size):
-    """盤面サイズ別の重みを優先し、従来の単一パス設定にも対応する。"""
-    paths = config.get("policy_model_paths")
+def model_path_for_size(config, board_size, name):
+    """盤面サイズ別の重みを優先し、単一パス設定にも対応する。"""
+    paths_key = f"{name}_model_paths"
+    paths = config.get(paths_key)
     if paths is not None:
         if not isinstance(paths, dict):
-            raise ValueError("policy_model_paths must be an object")
+            raise ValueError(f"{paths_key} must be an object")
         path = paths.get(str(board_size))
         if path is not None:
             if not isinstance(path, str) or not path.strip():
-                raise ValueError(f"Invalid Policy AI model path for {board_size}x{board_size}")
+                raise ValueError(f"Invalid {name} model path for {board_size}x{board_size}")
             return path
-    return config.get("policy_model_path")
+    return config.get(f"{name}_model_path")
+
+
+def policy_model_path_for_size(config, board_size):
+    return model_path_for_size(config, board_size, "policy")
+
+
+def value_model_path_for_size(config, board_size):
+    return model_path_for_size(config, board_size, "value")
+
 
 def main():
     root = Tk()
@@ -38,7 +48,7 @@ def main():
     katago_client = None
     policy_engine = None
     config = {}
-    if "KataGo" in player_types or "Policy AI" in player_types:
+    if "KataGo" in player_types or "PolicyValue AI" in player_types:
         try:
             with open("config.json", "r") as f:
                 config = json.load(f)
@@ -92,23 +102,36 @@ def main():
             root.destroy()
             return
 
-    if "Policy AI" in player_types:
+    if "PolicyValue AI" in player_types:
         try:
             policy_model_path = policy_model_path_for_size(config, settings.result["board_size"])
+            value_model_path = value_model_path_for_size(config, settings.result["board_size"])
         except ValueError as error:
-            messagebox.showerror("Policy AI Error", str(error))
+            messagebox.showerror("PolicyValue AI Error", str(error))
             if katago_client:
                 katago_client.close()
             root.destroy()
             return
         if not isinstance(policy_model_path, str) or not policy_model_path.strip():
-            messagebox.showerror("Policy AI Error", "Set policy_model_paths or policy_model_path in config.json for this board size.")
+            messagebox.showerror("PolicyValue AI Error", "Set policy_model_paths or policy_model_path in config.json for this board size.")
             if katago_client:
                 katago_client.close()
             root.destroy()
             return
         if not os.path.isfile(policy_model_path):
-            messagebox.showerror("Policy AI Error", f"Policy AI model file not found: {policy_model_path}")
+            messagebox.showerror("PolicyValue AI Error", f"Policy model file not found: {policy_model_path}")
+            if katago_client:
+                katago_client.close()
+            root.destroy()
+            return
+        if not isinstance(value_model_path, str) or not value_model_path.strip():
+            messagebox.showerror("PolicyValue AI Error", "Set value_model_paths or value_model_path in config.json for this board size.")
+            if katago_client:
+                katago_client.close()
+            root.destroy()
+            return
+        if not os.path.isfile(value_model_path):
+            messagebox.showerror("PolicyValue AI Error", f"Value model file not found: {value_model_path}")
             if katago_client:
                 katago_client.close()
             root.destroy()
@@ -121,9 +144,10 @@ def main():
                 board_size=settings.result["board_size"],
                 komi=settings.result["komi"],
                 model_path=policy_model_path,
+                value_model_path=value_model_path,
             )
         except Exception as error:
-            messagebox.showerror("Policy AI Error", f"Could not load Policy AI model: {error}")
+            messagebox.showerror("PolicyValue AI Error", f"Could not load PolicyValue AI models: {error}")
             if katago_client:
                 katago_client.close()
             root.destroy()
@@ -138,7 +162,7 @@ def main():
             )
         elif player_type == "KataGo":
             ai_engines[color] = katago_client
-        elif player_type == "Policy AI":
+        elif player_type == "PolicyValue AI":
             ai_engines[color] = policy_engine
 
     try:
