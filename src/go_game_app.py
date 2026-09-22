@@ -16,6 +16,10 @@ class GoGameApp:
         self.board_left = 220
         self.board_top = 50
         self.komi = komi
+        self.background_color = "#808080"
+        self.pass_idle_color = "#b0b0b0"
+        self.pass_active_color = "#fff4ce"
+        self.turn_bar_width = 56
 
         self.black_type = "Player" if black_type == "player" else black_type
         self.white_type = "Player" if white_type == "player" else white_type
@@ -36,7 +40,8 @@ class GoGameApp:
 
         # GUI設定
         self.root.geometry(f"{self.board_left + self.canvas_size + 200}x{self.canvas_size + 180}")
-        self.root.title("Hebogo")        
+        self.root.title("Hebogo")
+        self.root.configure(bg=self.background_color)
 
         # メニュー追加
         self.create_menu()
@@ -46,19 +51,23 @@ class GoGameApp:
         self.canvas.place(x=self.board_left, y=self.board_top)
 
         # 白の情報表示（左上）
-        self.white_frame = tk.Frame(root)
+        self.white_frame = tk.Frame(root, bg=self.background_color)
         self.white_frame.place(x=20, y=100)  # 碁盤と同じ高さに配置
         
         # 白のプレーヤー名
-        self.white_label = Label(self.white_frame, text="", font=("Arial", 14), fg="black")
+        self.white_label = Label(self.white_frame, text="", font=("Arial", 14), fg="black", bg=self.background_color)
         self.white_label.pack(pady=(0, 5))  # 下の余白を調整
+        self.white_pass_label = Label(self.white_frame, text="Pass", font=("Arial", 12),
+                                      bg=self.pass_idle_color, fg="#505050")
+        self.white_pass_label.pack(pady=(0, 5))
         
         # 白の手番表示用のキャンバス
-        self.turn_indicator = Canvas(self.white_frame, width=20, height=20, bg=None, highlightthickness=0)
+        self.turn_indicator = Canvas(self.white_frame, width=self.turn_bar_width, height=20,
+                                     bg=self.background_color, highlightthickness=0)
         self.turn_indicator.pack(pady=(0, 10))
 
         # 白のアゲハマ表示用のキャンバス（透明対応）
-        self.white_captures_canvas = Canvas(self.white_frame, width=self.cell_size * 3, height=self.cell_size, bg=None, highlightthickness=0)
+        self.white_captures_canvas = Canvas(self.white_frame, width=self.cell_size * 3, height=self.cell_size, bg=self.background_color, highlightthickness=0)
         self.white_captures_canvas.pack(pady=(0, 10))  # 下の余白を調整
                 
         # 白のボタン
@@ -69,23 +78,23 @@ class GoGameApp:
         self.white_resign_button.pack(pady=2)
 
         # 黒の情報表示（右下）
-        self.black_frame = tk.Frame(root)
+        self.black_frame = tk.Frame(root, bg=self.background_color)
         self.black_frame.place(x=self.board_left + self.canvas_size + 40, y=self.canvas_size - 160)
         
         # 黒のプレーヤー名
-        self.black_label = Label(self.black_frame, text="", font=("Arial", 14), fg="black")
+        self.black_label = Label(self.black_frame, text="", font=("Arial", 14), fg="black", bg=self.background_color)
         self.black_label.pack(pady=(0, 5))  # 下の余白を調整
+        self.black_pass_label = Label(self.black_frame, text="Pass", font=("Arial", 12),
+                                      bg=self.pass_idle_color, fg="#505050")
+        self.black_pass_label.pack(pady=(0, 5))
         
         # 黒の手番表示用のキャンバス
-        self.turn_indicator2 = Canvas(self.black_frame, width=20, height=20, bg=None, highlightthickness=0)
+        self.turn_indicator2 = Canvas(self.black_frame, width=self.turn_bar_width, height=20,
+                                      bg=self.background_color, highlightthickness=0)
         self.turn_indicator2.pack(pady=(0, 10))
-        
-        # 白の手番表示用のキャンバス
-        self.turn_indicator = Canvas(self.white_frame, width=20, height=20, bg=None, highlightthickness=0)
-        self.turn_indicator.pack(pady=(0, 10))
 
         # 黒のアゲハマ表示用のキャンバス（透明対応）
-        self.black_captures_canvas = Canvas(self.black_frame, width=self.cell_size * 3, height=self.cell_size, bg=None, highlightthickness=0)
+        self.black_captures_canvas = Canvas(self.black_frame, width=self.cell_size * 3, height=self.cell_size, bg=self.background_color, highlightthickness=0)
         self.black_captures_canvas.pack(pady=(0, 10))  # 下の余白を調整
         
         # 黒のボタン
@@ -97,6 +106,7 @@ class GoGameApp:
 
         # パスと投了の状態を追跡
         self.last_move_was_pass = False
+        self.passed_players = set()
         self.game_over = False
 
         self.draw_board()
@@ -104,6 +114,7 @@ class GoGameApp:
 
         # 初期状態の更新
         self.update_captures()  # プレーヤー情報を表示
+        self.update_pass_labels()
         self.update_button_states()  # ボタンの状態を更新
 
         # AIの手番をチェック
@@ -170,7 +181,9 @@ class GoGameApp:
         self.current_turn = 1
         self.board_history = [[row[:] for row in self.board]]
         self.last_move_was_pass = False
+        self.passed_players.clear()
         self.game_over = False
+        self.update_pass_labels()
         self.update_captures()
         self.draw_board()
         self.update_button_states()
@@ -337,6 +350,8 @@ class GoGameApp:
 
             # パスの状態をリセット
             self.last_move_was_pass = False
+            self.passed_players.discard(self.current_turn)
+            self.update_pass_labels()
 
             # ターン終了
             self.current_turn *= -1
@@ -420,6 +435,8 @@ class GoGameApp:
 
                 # パスの状態をリセット
                 self.last_move_was_pass = False
+                self.passed_players.discard(self.current_turn)
+                self.update_pass_labels()
 
                 # ターン終了
                 self.current_turn *= -1
@@ -467,9 +484,16 @@ class GoGameApp:
 
         # 現在の手番に応じて緑の線を描画（位置は固定）
         if self.current_turn == -1:  # 白の手番
-            self.turn_indicator.create_line(0, 10, 40, 10, fill="green", width=5)
+            self.turn_indicator.create_line(2, 10, self.turn_bar_width - 2, 10, fill="green", width=5)
         else:  # 黒の手番
-            self.turn_indicator2.create_line(0, 10, 40, 10, fill="green", width=5)
+            self.turn_indicator2.create_line(2, 10, self.turn_bar_width - 2, 10, fill="green", width=5)
+
+    def update_pass_labels(self):
+        """各プレーヤーの直近の行動がパスならラベルを点灯する。"""
+        for player, label in ((-1, self.white_pass_label), (1, self.black_pass_label)):
+            passed = player in self.passed_players
+            label.config(bg=self.pass_active_color if passed else self.pass_idle_color,
+                         fg="black" if passed else "#505050")
 
     def update_button_states(self):
         """ボタンの有効/無効状態を更新"""
@@ -531,9 +555,13 @@ class GoGameApp:
 
         if self.last_move_was_pass:
             self.game_over = True
+            self.passed_players.add(player)
+            self.update_pass_labels()
             self.show_final_score()
         else:
             self.last_move_was_pass = True
+            self.passed_players.add(player)
+            self.update_pass_labels()
             if self.is_human_match():
                 # パスも一手として履歴に残すと、パス後の劫取りを許可できる。
                 self.board_history.append([row[:] for row in self.board])

@@ -223,6 +223,8 @@ class MixedEngineSynchronizationTest(unittest.TestCase):
         self.app.black_type = "KataGo"
         self.app.white_type = "PolicyValue AI"
         self.app.last_move_was_pass = False
+        self.app.passed_players = set()
+        self.app.update_pass_labels = MagicMock()
         self.app.board = [[0] * 9 for _ in range(9)]
         self.app.root = MagicMock()
         self.app.draw_board = MagicMock()
@@ -286,6 +288,8 @@ class MixedEngineSynchronizationTest(unittest.TestCase):
 
         self.policy.play.assert_called_once_with("black", "pass")
         self.assertTrue(self.app.last_move_was_pass)
+        self.assertIn(1, self.app.passed_players)
+        self.app.update_pass_labels.assert_called_once()
         self.assertEqual(self.app.current_turn, -1)
 
     def test_different_captures_stop_the_match(self):
