@@ -17,6 +17,8 @@
 - 盤面サイズごとに別モデルを学習する。
 - 保存形式は `ValueNetwork(board_size)` の `state_dict` とする。
 - 未学習の重みを対局用として読み込まない。
+- `scripts/train_value.py --input data/sgf/raw --board-size 19 --output value_19x19.pt` で学習する。平均二乗誤差で学習し、検証損失が最良の `state_dict` を保存する。
+- 検証には2棋譜以上が必要。1棋譜で処理だけ確認する場合は `--validation-fraction 0` を指定する。
 
 ## Policy Network との融合
 
@@ -25,10 +27,12 @@
 - 各候補を着手した後の盤面を、**次の手番**を指定して Value Network に入力する。
 - Value の出力は次の手番から見た値なので、元の手番の評価には符号を反転する。
 - 候補の総合点は `policy_weight * policy_score - value_weight * next_player_value` とする。
-  Policy のスコアをどう正規化するか、重みの既定値、K の既定値は実装前にここで固定する。
+- `policy_score` は合法手とパスの logits 全体に softmax を適用した確率とする。候補の順位は元の logits で決める。
+- 既定値は `K=5`、`policy_weight=1.0`、`value_weight=1.0` とする。K はパス以外の候補数で、パスは常に別枠で評価する。
 - 着手には既存の合法手判定を使い、劫・超劫、パスを維持する。
 - Value モデルが未設定の場合は既存の Policy AI と同じ動作にする。
 - モデルのサイズ不一致や非有限値は明示的なエラーにする。
+- 公開 API は `PolicyValueAI(policy_model, value_model=None, top_k=5, policy_weight=1.0, value_weight=1.0).get_move(board, color, previous_board=None, history=None)` とする。返り値は `(x, y)`、パスは `None`。
 
 ## 並列作業の境界
 

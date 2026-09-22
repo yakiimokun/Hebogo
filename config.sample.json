@@ -4,5 +4,8 @@
         "model_path": "/path/to/model.bin.gz",
         "config_path": "/path/to/gtp_setting.cfg"
     },
-    "policy_model_path": "/path/to/policy_model.pt"
+    "policy_model_paths": {
+        "9": "/path/to/policy_9x9.pth",
+        "19": "/path/to/policy_19x19.pth"
+    }
 }

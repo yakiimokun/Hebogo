@@ -7,6 +7,20 @@ from src.random_gtp_engine import RandomGTPEngine
 import os
 import json
 
+
+def policy_model_path_for_size(config, board_size):
+    """盤面サイズ別の重みを優先し、従来の単一パス設定にも対応する。"""
+    paths = config.get("policy_model_paths")
+    if paths is not None:
+        if not isinstance(paths, dict):
+            raise ValueError("policy_model_paths must be an object")
+        path = paths.get(str(board_size))
+        if path is not None:
+            if not isinstance(path, str) or not path.strip():
+                raise ValueError(f"Invalid Policy AI model path for {board_size}x{board_size}")
+            return path
+    return config.get("policy_model_path")
+
 def main():
     root = Tk()
     root.title("Hebogo")
@@ -79,9 +93,16 @@ def main():
             return
 
     if "Policy AI" in player_types:
-        policy_model_path = config.get("policy_model_path")
+        try:
+            policy_model_path = policy_model_path_for_size(config, settings.result["board_size"])
+        except ValueError as error:
+            messagebox.showerror("Policy AI Error", str(error))
+            if katago_client:
+                katago_client.close()
+            root.destroy()
+            return
         if not isinstance(policy_model_path, str) or not policy_model_path.strip():
-            messagebox.showerror("Policy AI Error", "Set policy_model_path in config.json to a trained Policy AI model.")
+            messagebox.showerror("Policy AI Error", "Set policy_model_paths or policy_model_path in config.json for this board size.")
             if katago_client:
                 katago_client.close()
             root.destroy()

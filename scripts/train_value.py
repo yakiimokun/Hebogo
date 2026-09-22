@@ -1,4 +1,4 @@
-"""SGF 棋譜から Policy Network を教師あり学習する。"""
+"""SGF 棋譜から Value Network を教師あり学習する。"""
 
 from __future__ import annotations
 
@@ -15,8 +15,8 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from src.policy_network import PolicyNetwork  # noqa: E402
-from src.policy_training_data import load_policy_splits  # noqa: E402
+from src.value_network import ValueNetwork  # noqa: E402
+from src.value_training_data import load_value_splits  # noqa: E402
 
 
 def _positive_int(value: str) -> int:
@@ -42,7 +42,7 @@ def _validation_fraction(value: str) -> float:
 
 def _arguments(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="SGF 棋譜から Policy Network を学習し、state_dict を保存します。"
+        description="SGF 棋譜から Value Network を学習し、state_dict を保存します。"
     )
     parser.add_argument("--input", type=Path, default=Path("data/sgf/raw"))
     parser.add_argument("--board-size", type=int, choices=(9, 13, 19), default=19)
@@ -64,14 +64,14 @@ def _encode_boards(boards: np.ndarray) -> torch.Tensor:
 
 def _loader(
     boards: np.ndarray,
-    moves: np.ndarray,
+    values: np.ndarray,
     batch_size: int,
     shuffle: bool,
     seed: int,
 ) -> DataLoader:
     dataset = TensorDataset(
         _encode_boards(boards),
-        torch.from_numpy(np.asarray(moves, dtype=np.int64)),
+        torch.from_numpy(np.asarray(values, dtype=np.float32)).reshape(-1, 1),
     )
     generator = torch.Generator().manual_seed(seed) if shuffle else None
     return DataLoader(dataset, batch_size=batch_size, shuffle=shuffle, generator=generator)
@@ -88,51 +88,50 @@ def _device(requested: str) -> torch.device:
 
 
 def _epoch(
-    model: PolicyNetwork,
+    model: ValueNetwork,
     loader: DataLoader,
     device: torch.device,
     optimizer: torch.optim.Optimizer | None,
 ) -> tuple[float, float]:
-    """1エポックの平均損失とtop-1正解率を返す。"""
+    """1 エポックの平均二乗誤差と平均絶対誤差を返す。"""
     training = optimizer is not None
     model.train(training)
-    total_loss = 0.0
-    total_correct = 0
+    total_squared_error = 0.0
+    total_absolute_error = 0.0
     count = 0
-    criterion = torch.nn.CrossEntropyLoss()
     with torch.set_grad_enabled(training):
         for inputs, targets in loader:
             inputs = inputs.to(device)
             targets = targets.to(device)
             if optimizer is not None:
                 optimizer.zero_grad()
-            logits = model(inputs)
-            loss = criterion(logits, targets)
+            predictions = model(inputs)
+            error = predictions - targets
+            loss = error.square().mean()
             if optimizer is not None:
                 loss.backward()
                 optimizer.step()
-            size = targets.numel()
-            total_loss += loss.item() * size
-            total_correct += (logits.argmax(dim=1) == targets).sum().item()
-            count += size
-    return total_loss / count, total_correct / count
+            total_squared_error += error.detach().square().sum().item()
+            total_absolute_error += error.detach().abs().sum().item()
+            count += targets.numel()
+    return total_squared_error / count, total_absolute_error / count
 
 
 def main(argv: list[str] | None = None) -> int:
     args = _arguments(argv)
     output = args.output or Path(
-        f"data/sgf/processed/policy_{args.board_size}x{args.board_size}.pt"
+        f"data/sgf/processed/value_{args.board_size}x{args.board_size}.pt"
     )
     try:
-        splits = load_policy_splits(
+        splits = load_value_splits(
             args.input,
             args.board_size,
             validation_fraction=args.validation_fraction,
             seed=args.seed,
         )
-        if not len(splits.train_moves):
+        if not len(splits.train_values):
             raise ValueError("学習可能な棋譜がありません")
-        if args.validation_fraction and not len(splits.validation_moves):
+        if args.validation_fraction and not len(splits.validation_values):
             raise ValueError(
                 "検証用の棋譜がありません。2棋譜以上を用意するか、"
                 "--validation-fraction 0 を指定してください"
@@ -143,44 +142,44 @@ def main(argv: list[str] | None = None) -> int:
                 file=sys.stderr,
             )
         print(
-            f"学習: {len(splits.train_files)}棋譜 / {len(splits.train_moves)}局面、"
+            f"学習: {len(splits.train_files)}棋譜 / {len(splits.train_values)}局面、"
             f"検証: {len(splits.validation_files)}棋譜 / "
-            f"{len(splits.validation_moves)}局面"
+            f"{len(splits.validation_values)}局面"
         )
 
         torch.manual_seed(args.seed)
         device = _device(args.device)
-        model = PolicyNetwork(args.board_size).to(device)
+        model = ValueNetwork(args.board_size).to(device)
         optimizer = torch.optim.AdamW(model.parameters(), lr=args.learning_rate)
         train_loader = _loader(
-            splits.train_boards, splits.train_moves, args.batch_size, True, args.seed
+            splits.train_boards, splits.train_values, args.batch_size, True, args.seed
         )
         validation_loader = (
             _loader(
                 splits.validation_boards,
-                splits.validation_moves,
+                splits.validation_values,
                 args.batch_size,
                 False,
                 args.seed,
             )
-            if len(splits.validation_moves)
+            if len(splits.validation_values)
             else None
         )
         best_loss = float("inf")
         output.parent.mkdir(parents=True, exist_ok=True)
         for epoch in range(1, args.epochs + 1):
-            train_loss, train_accuracy = _epoch(model, train_loader, device, optimizer)
+            train_loss, train_mae = _epoch(model, train_loader, device, optimizer)
             report = (
                 f"epoch {epoch}/{args.epochs}: train loss={train_loss:.4f}, "
-                f"top-1={train_accuracy:.3f}"
+                f"mae={train_mae:.4f}"
             )
             if validation_loader is not None:
-                validation_loss, validation_accuracy = _epoch(
+                validation_loss, validation_mae = _epoch(
                     model, validation_loader, device, None
                 )
                 report += (
                     f", validation loss={validation_loss:.4f}, "
-                    f"top-1={validation_accuracy:.3f}"
+                    f"mae={validation_mae:.4f}"
                 )
                 should_save = validation_loss < best_loss
                 best_loss = min(best_loss, validation_loss)
