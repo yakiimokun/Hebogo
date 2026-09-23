@@ -22,6 +22,19 @@ class PassEngine:
         self.closed = True
 
 
+class SequenceEngine(PassEngine):
+    def __init__(self, moves):
+        super().__init__()
+        self.moves = iter(moves)
+        self.commands = []
+
+    def send_command(self, command):
+        self.commands.append(command)
+        if command.startswith("genmove"):
+            return next(self.moves)
+        return super().send_command(command)
+
+
 class BenchmarkTest(unittest.TestCase):
     def test_times_only_genmove(self):
         with patch("src.gtp_match.perf_counter", side_effect=[1.0, 1.2, 2.0, 2.3]):
@@ -44,7 +57,19 @@ class BenchmarkTest(unittest.TestCase):
         self.assertEqual(result.win_rate, 0.5)
         self.assertEqual(result.policy_seconds_per_move, 1.0)
         self.assertEqual(len(result.policy_move_times), 2)
+        self.assertEqual((result.policy_passes, result.opponent_passes), (2, 2))
         self.assertTrue(all(engine.closed for engine in opponents))
+
+    def test_counts_passes_by_player_and_uses_board_size(self):
+        policy = SequenceEngine(["pass", "pass"])
+        opponent = SequenceEngine(["D4", "pass"])
+        with patch("src.gtp_match.perf_counter", side_effect=range(8)):
+            result = run_benchmark(policy, lambda index: opponent, games=1, board_size=13)
+        self.assertEqual((result.policy_passes, result.opponent_passes), (2, 1))
+        self.assertEqual(result.unresolved, 0)
+        self.assertIn("boardsize 13", policy.commands)
+        self.assertIn("boardsize 13", opponent.commands)
+        self.assertTrue(opponent.closed)
 
     def test_move_limit_is_unresolved(self):
         with patch("src.gtp_match.perf_counter", side_effect=[0.0, 0.1]):

@@ -36,18 +36,31 @@ python3 scripts/train_value.py --input data/sgf/raw --board-size 19 \
 従来の `policy_model_path` と単一の `value_model_path` も、サイズ別設定がない場合に使用できます。
 Value の重みが設定されていない場合、GUI はエラーを表示し対局を開始しません。
 
-## 9路の対戦評価
+## 対戦評価
 
-学習済みの9路モデルを、黒白を交代して Random AI と対戦させます。
+学習済みのモデルを、黒白を交代して Random AI と対戦させます。
 
 ```bash
 python3 scripts/benchmark_policy.py --policy-model data/sgf/processed/policy_9x9.pth --opponent random --games 20
 ```
 
+PolicyValue AI は `--value-model` を加えて指定します。`--policy-weight` と
+`--value-weight` で予測の合成係数を切り替えられます。省略時は PolicyValue AI
+の既定値を使います。盤面サイズは `--board-size` で指定します（既定は9路）。
+
+```bash
+python3 scripts/benchmark_policy.py --board-size 19 \
+  --policy-model data/sgf/processed/policy_19x19.pth \
+  --value-model data/sgf/processed/value_19x19.pth \
+  --policy-weight 1 --value-weight 0.001 --opponent random --games 20
+```
+
 KataGo と比較する場合は `config.json` の `katago` 設定を用意し、
 `--opponent katago` を指定します。`--seed` は Random AI の乱数を固定します。
-勝率の分母は決着局のみで、持碁は半勝とします。上限手数 (`--max-moves`、既定243手)
-に達した局やスコアを取得できない局は未決着として表示します。
+勝率の分母は決着局のみで、持碁は半勝とします。上限手数 (`--max-moves`、
+既定は盤面の交点数の3倍)
+に達した局やスコアを取得できない局は未決着として表示します。PASS回数は
+未決着局を含む全対局で、AIと対戦相手ごとに集計します。
 着手時間は各エンジンの `genmove` 応答に要した壁時計時間の平均です。
 モデルの読み込みや KataGo の起動、盤面の初期化、相手への着手通知は含みません。
 内蔵エンジンの終局スコアは簡易日本ルールで計算し、死石の合意処理は含みません。

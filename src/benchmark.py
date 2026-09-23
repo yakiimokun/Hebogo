@@ -1,4 +1,4 @@
-"""9路の GTP 対局結果と着手時間を集計する。"""
+"""GTP 対局結果、着手時間、パス回数を集計する。"""
 
 from dataclasses import dataclass
 from statistics import mean
@@ -15,6 +15,8 @@ class BenchmarkResult:
     unresolved: int
     policy_move_times: tuple[float, ...]
     opponent_move_times: tuple[float, ...]
+    policy_passes: int = 0
+    opponent_passes: int = 0
 
     @property
     def win_rate(self):
@@ -48,19 +50,20 @@ def _winner(result):
     raise ValueError(f"unrecognized final_score: {result.final_score!r}")
 
 
-def run_benchmark(policy, opponent_factory, games=10, max_moves=243, komi=6.5):
+def run_benchmark(policy, opponent_factory, games=10, max_moves=243, komi=6.5, board_size=9):
     """各局で黒白を交代し、Policy AI 視点の結果を返す。"""
     if games <= 0 or max_moves <= 0:
         raise ValueError("games and max_moves must be positive")
     wins = losses = draws = unresolved = 0
     policy_times = []
     opponent_times = []
+    policy_passes = opponent_passes = 0
     for game_index in range(games):
         opponent = opponent_factory(game_index)
         policy_color = "black" if game_index % 2 == 0 else "white"
         black, white = (policy, opponent) if policy_color == "black" else (opponent, policy)
         try:
-            result = GTPMatch(black, white, board_size=9, komi=komi).play(max_moves=max_moves)
+            result = GTPMatch(black, white, board_size=board_size, komi=komi).play(max_moves=max_moves)
             winner = _winner(result)
             if winner is None:
                 unresolved += 1
@@ -72,6 +75,12 @@ def run_benchmark(policy, opponent_factory, games=10, max_moves=243, komi=6.5):
                 losses += 1
             for color, seconds in result.move_times:
                 (policy_times if color == policy_color else opponent_times).append(seconds)
+            for color, vertex in result.moves:
+                if vertex.lower() == "pass":
+                    if color == policy_color:
+                        policy_passes += 1
+                    else:
+                        opponent_passes += 1
         finally:
             close = getattr(opponent, "close", None)
             if close is not None:
@@ -79,4 +88,5 @@ def run_benchmark(policy, opponent_factory, games=10, max_moves=243, komi=6.5):
     return BenchmarkResult(
         games, wins, losses, draws, unresolved,
         tuple(policy_times), tuple(opponent_times),
+        policy_passes, opponent_passes,
     )

@@ -34,7 +34,7 @@ class PolicyValueAITest(unittest.TestCase):
         scores = [0.0] * 10
         scores[0], scores[1], scores[2] = 3.0, 2.0, 1.0
         value = RecordingValue(3, [0.8, -0.9, -0.2])
-        ai = PolicyValueAI(FixedPolicy(3, scores), value, top_k=2)
+        ai = PolicyValueAI(FixedPolicy(3, scores), value, top_k=2, value_weight=1.0)
         self.assertEqual(ai.get_move([[0] * 3 for _ in range(3)], BLACK), (1, 0))
         self.assertEqual(tuple(value.last_inputs.shape), (3, 3, 3, 3))
         # 候補着手後の盤面を、白の手番から見たチャンネルで符号化する。
@@ -46,7 +46,8 @@ class PolicyValueAITest(unittest.TestCase):
         scores = [0.0] * 10
         scores[0] = 3.0
         scores[-1] = -3.0
-        ai = PolicyValueAI(FixedPolicy(3, scores), RecordingValue(3, [1.0, -1.0]), top_k=1)
+        ai = PolicyValueAI(FixedPolicy(3, scores), RecordingValue(3, [1.0, -1.0]),
+                           top_k=1, value_weight=1.0)
         self.assertIsNone(ai.get_move([[0] * 3 for _ in range(3)], BLACK))
 
     def test_softmax_uses_all_legal_moves_including_pass(self):
@@ -54,7 +55,8 @@ class PolicyValueAITest(unittest.TestCase):
         scores = [0.0] * 10
         scores[0] = 0.2
         scores[-1] = -1.0
-        ai = PolicyValueAI(FixedPolicy(3, scores), RecordingValue(3, [-0.1, -0.2]), top_k=1)
+        ai = PolicyValueAI(FixedPolicy(3, scores), RecordingValue(3, [-0.1, -0.2]),
+                           top_k=1, value_weight=1.0)
         self.assertIsNone(ai.get_move([[0] * 3 for _ in range(3)], BLACK))
 
     def test_occupied_and_history_forbidden_points_are_excluded(self):

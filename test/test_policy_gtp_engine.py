@@ -52,7 +52,8 @@ class PolicyGTPEngineTest(unittest.TestCase):
 
     def test_value_model_changes_gtp_move(self):
         engine = PolicyGTPEngine(
-            board_size=3, model=FixedModel(3, 0), value_model=FixedValueModel(3)
+            board_size=3, model=FixedModel(3, 0), value_model=FixedValueModel(3),
+            value_weight=1.0,
         )
         self.assertIsInstance(engine.ai, PolicyValueAI)
         self.assertEqual(engine.send_command("name"), "Hebogo PolicyValue AI")
@@ -61,6 +62,15 @@ class PolicyGTPEngineTest(unittest.TestCase):
         self.assertTrue(engine.set_board_size(3))
         with self.assertRaises(ValueError):
             PolicyGTPEngine(board_size=3, model=FixedModel(3, 0), value_model=FixedValueModel(9))
+
+    def test_value_weights_are_forwarded_to_policy_value_ai(self):
+        engine = PolicyGTPEngine(
+            board_size=3, model=FixedModel(3, 0), value_model=FixedValueModel(3),
+            policy_weight=2.0, value_weight=0.25,
+        )
+        self.assertEqual((engine.ai.policy_weight, engine.ai.value_weight), (2.0, 0.25))
+        with self.assertRaisesRegex(ValueError, "require a value model"):
+            PolicyGTPEngine(board_size=3, model=FixedModel(3, 0), value_weight=0.25)
 
     def test_loads_value_state_dict_checkpoint(self):
         with tempfile.NamedTemporaryFile(suffix=".pt") as checkpoint:

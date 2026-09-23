@@ -24,6 +24,7 @@ class PolicyGTPEngine:
     def __init__(
         self, board_size=19, komi=6.5, model_path=None, model=None,
         value_model_path=None, value_model=None,
+        policy_weight=None, value_weight=None,
     ):
         if not 2 <= board_size <= len(_COLUMNS):
             raise ValueError("unacceptable board size")
@@ -51,8 +52,18 @@ class PolicyGTPEngine:
                 raise ValueError(f"cannot load value model: {error}") from error
         if value_model is not None and getattr(value_model, "board_size", None) != board_size:
             raise ValueError("board size does not match value model")
+        if value_model is None and (policy_weight is not None or value_weight is not None):
+            raise ValueError("policy/value weights require a value model")
         self.policy_model = model
-        self.ai = PolicyValueAI(model, value_model) if value_model is not None else PolicyAI(model)
+        if value_model is not None:
+            weights = {}
+            if policy_weight is not None:
+                weights["policy_weight"] = policy_weight
+            if value_weight is not None:
+                weights["value_weight"] = value_weight
+            self.ai = PolicyValueAI(model, value_model, **weights)
+        else:
+            self.ai = PolicyAI(model)
         self.board_size = board_size
         self.komi_value = float(komi)
         self.clear_board()
