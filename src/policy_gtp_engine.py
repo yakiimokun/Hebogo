@@ -165,6 +165,10 @@ class PolicyGTPEngine:
     def is_pass(self, move):
         return bool(move and move.lower() == "pass")
 
+    def get_last_analysis(self):
+        """直前のPolicyValue推論結果を返す。"""
+        return getattr(self.ai, "last_analysis", None)
+
     def close(self):
         """外部プロセスを使わないため解放は不要。"""
 

@@ -41,6 +41,12 @@ class PolicyValueAITest(unittest.TestCase):
         self.assertEqual(value.last_inputs[0, 2, 0, 0].item(), 1)
         self.assertEqual(value.last_inputs[1, 2, 0, 1].item(), 1)
         self.assertEqual(value.last_inputs[2, 0].sum().item(), 9)  # パス
+        self.assertEqual(ai.last_analysis.selected_move, (1, 0))
+        self.assertEqual(ai.last_analysis.policy_weight, 1.0)
+        self.assertEqual(len(ai.last_analysis.candidates), 3)
+        selected = next(candidate for candidate in ai.last_analysis.candidates
+                        if candidate.move == (1, 0))
+        self.assertAlmostEqual(selected.value, -0.9)
 
     def test_pass_is_evaluated_even_outside_top_k(self):
         scores = [0.0] * 10

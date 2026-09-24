@@ -246,6 +246,8 @@ class MixedEngineSynchronizationTest(unittest.TestCase):
 
         self.policy.play.assert_called_once_with("black", "d4")
         self.assertEqual(self.app.board[5][3], 1)
+        self.assertEqual(self.app.move_history[-1].move, (3, 5))
+        self.assertEqual(self.app.move_history[-1].color, 1)
         self.app.draw_board.assert_called_once()
         self.assertEqual(self.app.current_turn, -1)
 
@@ -289,6 +291,8 @@ class MixedEngineSynchronizationTest(unittest.TestCase):
         self.policy.play.assert_called_once_with("black", "pass")
         self.assertTrue(self.app.last_move_was_pass)
         self.assertIn(1, self.app.passed_players)
+        self.assertIsNone(self.app.move_history[-1].move)
+        self.assertEqual(self.app.move_history[-1].color, 1)
         self.app.update_pass_labels.assert_called_once()
         self.assertEqual(self.app.current_turn, -1)
 

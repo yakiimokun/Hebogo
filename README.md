@@ -1,5 +1,12 @@
 # Hebogo
 
+## 診断SGFの保存
+
+対局中に `File` → `Save Diagnostic SGF...` を選ぶと、現在までの着手を
+SGFへ保存できます。盤面サイズ、コミ、対局者、PASS、現在の手番に加え、
+PolicyValue AIの着手にはPolicy確率、Value、合成スコア、係数、評価した候補手が
+コメントとして記録されます。
+
 ## Policy Network の学習
 
 リポジトリ直下から実行します。まず `requirements.txt` の依存関係を導入し、

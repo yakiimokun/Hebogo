@@ -5,6 +5,7 @@ import math
 import torch
 
 from .board_encoder import encode_board, point_to_index
+from .move_diagnostics import CandidateEvaluation, MoveAnalysis
 from .policy_ai import PolicyAI
 from .rules import BLACK, WHITE, Board, legal_moves, play_move
 
@@ -18,7 +19,7 @@ class PolicyValueAI:
         value_model=None,
         top_k: int = 5,
         policy_weight: float = 1.0,
-        value_weight: float = 1.0,
+        value_weight: float = 0.001,
     ):
         self.policy_ai = PolicyAI(policy_model)
         self.value_model = value_model
@@ -35,9 +36,11 @@ class PolicyValueAI:
         self.top_k = top_k
         self.policy_weight = policy_weight
         self.value_weight = value_weight
+        self.last_analysis = None
 
     def get_move(self, board: Board, color: int, previous_board=None, history=None):
         """着手を (x, y) で返す。パスは None。"""
+        self.last_analysis = None
         if self.value_model is None:
             return self.policy_ai.get_move(board, color, previous_board, history)
         if color not in (BLACK, WHITE):
@@ -91,11 +94,24 @@ class PolicyValueAI:
 
         best_move = None
         best_score = float("-inf")
+        evaluations = []
         for point, value in zip(candidates, values[:, 0].tolist()):
             score = (
                 self.policy_weight * policy_scores[point_to_index(point, size)]
                 - self.value_weight * value
             )
+            evaluations.append(CandidateEvaluation(
+                move=point,
+                policy_probability=policy_scores[point_to_index(point, size)],
+                value=value,
+                combined_score=score,
+            ))
             if score > best_score:
                 best_move, best_score = point, score
+        self.last_analysis = MoveAnalysis(
+            selected_move=best_move,
+            policy_weight=self.policy_weight,
+            value_weight=self.value_weight,
+            candidates=tuple(evaluations),
+        )
         return best_move

@@ -58,6 +58,7 @@ class PolicyGTPEngineTest(unittest.TestCase):
         self.assertIsInstance(engine.ai, PolicyValueAI)
         self.assertEqual(engine.send_command("name"), "Hebogo PolicyValue AI")
         self.assertEqual(engine.genmove("black"), "B3")
+        self.assertEqual(engine.get_last_analysis().selected_move, (1, 0))
         self.assertEqual(engine.board[0][1], BLACK)
         self.assertTrue(engine.set_board_size(3))
         with self.assertRaises(ValueError):

@@ -1,11 +1,13 @@
-from tkinter import Tk, Canvas, Label, Menu, Button, ttk, messagebox
+from tkinter import Tk, Canvas, Label, Menu, Button, ttk, filedialog, messagebox
 import tkinter as tk
 from PIL import Image, ImageTk
 import subprocess
 import time
 import os
 from .gtp_client import GTPClient
+from .move_diagnostics import MoveAnalysis, MoveRecord
 from .rules import KO, OCCUPIED, OUT_OF_BOUNDS, SUICIDE, calculate_score_japanese, play_move
+from .sgf_export import build_diagnostic_sgf
 
 class GoGameApp:
     def __init__(self, root, board_size=19, komi=6.5, black_type="player", white_type="Random AI", gtp_client=None, ai_engines=None):
@@ -36,6 +38,7 @@ class GoGameApp:
         # 盤面の状態
         self.board = [[0 for _ in range(board_size)] for _ in range(board_size)]  # 0: 空点, 1: 黒, -1: 白
         self.board_history = [[row[:] for row in self.board]]
+        self.move_history = []
         self.current_turn = 1  # 1: 黒, -1: 白
 
         # GUI設定
@@ -149,6 +152,10 @@ class GoGameApp:
         menu = Menu(self.root)
         self.root.config(menu=menu)
 
+        file_menu = Menu(menu, tearoff=0)
+        menu.add_cascade(label="File", menu=file_menu)
+        file_menu.add_command(label="Save Diagnostic SGF...", command=self.save_diagnostic_sgf)
+
         # ゲームモード選択
         game_menu = Menu(menu, tearoff=0)
         menu.add_cascade(label="Game Mode", menu=game_menu)
@@ -180,6 +187,7 @@ class GoGameApp:
         self.white_captures = 0
         self.current_turn = 1
         self.board_history = [[row[:] for row in self.board]]
+        self.move_history = []
         self.last_move_was_pass = False
         self.passed_players.clear()
         self.game_over = False
@@ -196,6 +204,53 @@ class GoGameApp:
                 engine.komi(self.komi)
         
         self.check_ai_turn()
+
+    def record_move(self, color, move, analysis=None):
+        """SGF保存用に、成立した着手と任意のAI評価を記録する。"""
+        if not hasattr(self, "move_history"):
+            self.move_history = []
+        if not isinstance(analysis, MoveAnalysis):
+            analysis = None
+        self.move_history.append(MoveRecord(color=color, move=move, analysis=analysis))
+
+    def save_diagnostic_sgf(self):
+        """現在までの棋譜とAI評価を保存ダイアログでSGFへ出力する。"""
+        path = filedialog.asksaveasfilename(
+            parent=self.root,
+            title="Save Diagnostic SGF",
+            defaultextension=".sgf",
+            filetypes=(("SGF files", "*.sgf"), ("All files", "*.*")),
+        )
+        if not path:
+            return
+        content = build_diagnostic_sgf(
+            board_size=self.board_size,
+            komi=self.komi,
+            black_name=self.black_type,
+            white_name=self.white_type,
+            moves=self.move_history,
+            current_turn=self.current_turn,
+        )
+        try:
+            with open(path, "w", encoding="utf-8", newline="\n") as output:
+                output.write(content)
+        except OSError as error:
+            messagebox.showerror("Save Error", f"Could not save SGF: {error}")
+            return
+        messagebox.showinfo("SGF Saved", f"Diagnostic SGF saved to:\n{path}")
+
+    @staticmethod
+    def analysis_from_engine(engine):
+        """対応エンジンから直前のAI評価を取得する。"""
+        getter = getattr(engine, "get_last_analysis", None)
+        if not callable(getter):
+            return None
+        try:
+            analysis = getter()
+        except Exception:
+            # 診断情報を取得できなくても対局自体は継続する。
+            return None
+        return analysis if isinstance(analysis, MoveAnalysis) else None
 
     def is_human_match(self):
         """両対局者が人間かを返す。"""
@@ -348,6 +403,8 @@ class GoGameApp:
             else:
                 return
 
+            self.record_move(self.current_turn, (x, y))
+
             # パスの状態をリセット
             self.last_move_was_pass = False
             self.passed_players.discard(self.current_turn)
@@ -387,6 +444,7 @@ class GoGameApp:
             self.stop_on_ai_error("AI returned an empty or invalid move.")
             return
         response = response.strip().lower()
+        analysis = self.analysis_from_engine(engine)
         
         if response == "pass":
             try:
@@ -397,7 +455,7 @@ class GoGameApp:
             except Exception as error:
                 self.stop_on_ai_error(str(error))
                 return
-            self.handle_pass(self.current_turn, send_to_engines=False)
+            self.handle_pass(self.current_turn, send_to_engines=False, analysis=analysis)
             return
             
         if response == "resign":
@@ -432,6 +490,8 @@ class GoGameApp:
                 except Exception as error:
                     self.stop_on_ai_error(f"Could not read the AI board: {error}")
                     return
+
+                self.record_move(self.current_turn, (x, y), analysis)
 
                 # パスの状態をリセット
                 self.last_move_was_pass = False
@@ -536,7 +596,7 @@ class GoGameApp:
         # 手番表示を更新
         self.update_turn_indicators()
 
-    def handle_pass(self, player, send_to_engines=True):
+    def handle_pass(self, player, send_to_engines=True, analysis=None):
         """パスを処理"""
         if self.game_over or self.current_turn != player:
             return
@@ -552,6 +612,8 @@ class GoGameApp:
             except Exception as error:
                 self.stop_on_ai_error(f"Could not synchronize the pass: {error}")
                 return
+
+        self.record_move(player, None, analysis)
 
         if self.last_move_was_pass:
             self.game_over = True
