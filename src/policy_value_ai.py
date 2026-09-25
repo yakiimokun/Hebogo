@@ -7,7 +7,53 @@ import torch
 from .board_encoder import encode_board, point_to_index
 from .move_diagnostics import CandidateEvaluation, MoveAnalysis
 from .policy_ai import PolicyAI
-from .rules import BLACK, WHITE, Board, legal_moves, play_move
+from .rules import (
+    BLACK, EMPTY, WHITE, Board, Point, group_and_liberties, legal_moves, play_move,
+)
+
+
+def _tactical_moves(
+    board: Board,
+    color: int,
+    legal: set[Point],
+    previous_board=None,
+    history=None,
+) -> dict[Point, tuple[int, int]]:
+    """取りと、着手後に2呼吸以上になるアタリ救出の候補を返す。"""
+    size = len(board)
+    visited: set[Point] = set()
+    rescue_targets: dict[Point, list[tuple[Point, int]]] = {}
+    tactical_points: set[Point] = set()
+
+    for y in range(size):
+        for x in range(size):
+            if board[y][x] == EMPTY or (x, y) in visited:
+                continue
+            group, liberties = group_and_liberties(board, x, y)
+            visited.update(group)
+            if len(liberties) != 1:
+                continue
+            liberty = next(iter(liberties))
+            tactical_points.add(liberty)
+            if board[y][x] == color:
+                rescue_targets.setdefault(liberty, []).append(((x, y), len(group)))
+
+    result: dict[Point, tuple[int, int]] = {}
+    for point in tactical_points & legal:
+        played = play_move(board, *point, color, previous_board, history)
+        if not played.legal:
+            continue
+        rescued = 0
+        for representative, group_size in rescue_targets.get(point, ()):
+            rx, ry = representative
+            if played.board[ry][rx] != color:
+                continue
+            _, liberties = group_and_liberties(played.board, rx, ry)
+            if len(liberties) > 1:
+                rescued += group_size
+        if played.captured or rescued:
+            result[point] = (played.captured, rescued)
+    return result
 
 
 class PolicyValueAI:
@@ -70,7 +116,10 @@ class PolicyValueAI:
                 point_to_index(point, size),
             ),
         )
-        candidates = ranked[:self.top_k] + [None]
+        tactical = _tactical_moves(
+            board, color, set(legal), previous_board=previous_board, history=history
+        )
+        candidates = list(dict.fromkeys(ranked[:self.top_k] + sorted(tactical))) + [None]
         legal_indices = [point_to_index(point, size) for point in legal] + [size * size]
         probabilities = torch.softmax(scores[legal_indices], dim=0)
         policy_scores = dict(zip(legal_indices, probabilities.tolist()))
@@ -96,15 +145,23 @@ class PolicyValueAI:
         best_score = float("-inf")
         evaluations = []
         for point, value in zip(candidates, values[:, 0].tolist()):
+            captured, rescued = tactical.get(point, (0, 0))
+            # 救出石数を優先点にする。Valueの重みを上げれば、戦術候補
+            # 同士を学習済みValueで比較する余地も維持される。
+            rescue_priority = float(rescued)
             score = (
                 self.policy_weight * policy_scores[point_to_index(point, size)]
                 - self.value_weight * value
+                + rescue_priority
             )
             evaluations.append(CandidateEvaluation(
                 move=point,
                 policy_probability=policy_scores[point_to_index(point, size)],
                 value=value,
                 combined_score=score,
+                captured_stones=captured,
+                rescued_stones=rescued,
+                rescue_priority=rescue_priority,
             ))
             if score > best_score:
                 best_move, best_score = point, score

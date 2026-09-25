@@ -35,7 +35,7 @@ class PolicyGTPEngine:
                 raise ValueError("a trained policy model or model_path is required")
             model = PolicyNetwork(board_size=board_size)
             try:
-                state_dict = torch.load(model_path, map_location="cpu", weights_only=True)
+                state_dict = torch.load(model_path, map_location="mps", weights_only=True)
                 model.load_state_dict(state_dict)
             except (OSError, RuntimeError, ValueError, TypeError, pickle.UnpicklingError) as error:
                 raise ValueError(f"cannot load policy model: {error}") from error

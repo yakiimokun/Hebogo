@@ -19,7 +19,10 @@ class DiagnosticSGFTest(unittest.TestCase):
             policy_weight=1.0,
             value_weight=0.001,
             candidates=(
-                CandidateEvaluation((3, 3), 0.00284, 0.54, 0.00230),
+                CandidateEvaluation(
+                    (3, 3), 0.00284, 0.54, 0.00230,
+                    captured_stones=2, rescued_stones=3, rescue_priority=3.0,
+                ),
                 CandidateEvaluation(None, 0.00269, 0.39, 0.00230),
             ),
         )
@@ -44,6 +47,8 @@ class DiagnosticSGFTest(unittest.TestCase):
         self.assertIn("AI selected: PASS", sgf)
         self.assertIn("policy=0.00284", sgf)
         self.assertIn("value=0.39", sgf)
+        self.assertIn("captured=2", sgf)
+        self.assertIn("rescued=3", sgf)
         self.assertIn("Policy weight: 1", sgf)
         self.assertTrue(sgf.endswith(";PL[W]C[Current turn: W])\n"))
 

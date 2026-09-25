@@ -13,6 +13,9 @@ class CandidateEvaluation:
     policy_probability: float
     value: float
     combined_score: float
+    captured_stones: int = 0
+    rescued_stones: int = 0
+    rescue_priority: float = 0.0
 
 
 @dataclass(frozen=True)

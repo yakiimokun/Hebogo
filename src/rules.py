@@ -73,6 +73,17 @@ def _group_and_liberties(board: Board, x: int, y: int) -> tuple[set[Point], set[
     return group, liberties
 
 
+def group_and_liberties(board: Board, x: int, y: int) -> tuple[set[Point], set[Point]]:
+    """指定した石を含む連と、その呼吸点を返す。"""
+    current = _copy_board(board)
+    size = len(current)
+    if not (0 <= x < size and 0 <= y < size):
+        raise ValueError("point is out of bounds")
+    if current[y][x] == EMPTY:
+        raise ValueError("point must contain a stone")
+    return _group_and_liberties(current, x, y)
+
+
 def play_move(
     board: Board,
     x: int,
@@ -222,4 +233,5 @@ class Rules:
     forbidden_reason = staticmethod(forbidden_reason)
     is_legal_move = staticmethod(is_legal_move)
     legal_moves = staticmethod(legal_moves)
+    group_and_liberties = staticmethod(group_and_liberties)
     calculate_score_japanese = staticmethod(calculate_score_japanese)

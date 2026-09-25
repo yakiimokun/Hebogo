@@ -36,7 +36,9 @@ def _analysis_comment(analysis: MoveAnalysis, board_size: int) -> str:
         lines.append(
             f"{index}. {_move_name(candidate.move, board_size)} | "
             f"policy={candidate.policy_probability:.9g} | "
-            f"value={candidate.value:.9g} | combined={candidate.combined_score:.9g}"
+            f"value={candidate.value:.9g} | captured={candidate.captured_stones} | "
+            f"rescued={candidate.rescued_stones} | "
+            f"combined={candidate.combined_score:.9g}"
         )
     return "\n".join(lines)
 
