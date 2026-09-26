@@ -30,6 +30,93 @@ class RecordingValue(torch.nn.Module):
 
 
 class PolicyValueAITest(unittest.TestCase):
+    def test_adds_successful_rescue_outside_policy_top_k_and_records_stones(self):
+        board = [
+            [BLACK, WHITE, 0],
+            [0, 0, 0],
+            [0, 0, 0],
+        ]
+        scores = [0.0] * 10
+        scores[8] = 0.5
+        ai = PolicyValueAI(
+            FixedPolicy(3, scores), RecordingValue(3, [0.0, 0.0, 0.0]), top_k=1
+        )
+
+        self.assertEqual(ai.get_move(board, BLACK), (0, 1))
+        rescue = next(item for item in ai.last_analysis.candidates
+                      if item.move == (0, 1))
+        self.assertEqual(rescue.rescued_stones, 1)
+        self.assertEqual(rescue.captured_stones, 0)
+        self.assertEqual(rescue.rescue_priority, 1.0)
+
+    def test_does_not_count_extension_that_still_has_one_liberty_as_rescue(self):
+        board = [
+            [BLACK, WHITE, 0],
+            [0, WHITE, 0],
+            [0, 0, 0],
+        ]
+        scores = [0.0] * 10
+        scores[8] = 1.0
+        ai = PolicyValueAI(
+            FixedPolicy(3, scores), RecordingValue(3, [0.0, 0.0]), top_k=1
+        )
+
+        ai.get_move(board, BLACK)
+        self.assertNotIn((0, 1), [item.move for item in ai.last_analysis.candidates])
+
+    def test_records_capture_candidate_outside_policy_top_k(self):
+        board = [
+            [WHITE, BLACK, 0],
+            [0, 0, 0],
+            [0, 0, 0],
+        ]
+        scores = [0.0] * 10
+        scores[8] = 1.0
+        ai = PolicyValueAI(
+            FixedPolicy(3, scores), RecordingValue(3, [0.0, 0.0, 0.0]), top_k=1
+        )
+
+        ai.get_move(board, BLACK)
+        capture = next(item for item in ai.last_analysis.candidates
+                       if item.move == (0, 1))
+        self.assertEqual(capture.captured_stones, 1)
+        self.assertEqual(capture.rescued_stones, 0)
+
+    def test_prefers_rescuing_larger_group(self):
+        board = [
+            [BLACK, WHITE, 0, WHITE, BLACK],
+            [BLACK, WHITE, 0, 0, 0],
+            [0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0],
+        ]
+        scores = [0.0] * 26
+        scores[12] = 0.5
+        ai = PolicyValueAI(
+            FixedPolicy(5, scores), RecordingValue(5, [0.0] * 4), top_k=1
+        )
+
+        self.assertEqual(ai.get_move(board, BLACK), (0, 2))
+        rescues = {item.move: item.rescued_stones for item in ai.last_analysis.candidates}
+        self.assertEqual(rescues[(0, 2)], 2)
+        self.assertEqual(rescues[(4, 1)], 1)
+
+    def test_value_compares_tactical_candidates_with_same_rescue_size(self):
+        board = [
+            [BLACK, WHITE, 0, WHITE, BLACK],
+            [0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0],
+        ]
+        scores = [0.0] * 26
+        scores[12] = 0.5
+        # 候補順はPolicy首位、左の救出、右の救出、PASS。
+        value = RecordingValue(5, [0.0, 0.8, -0.8, 0.0])
+        ai = PolicyValueAI(FixedPolicy(5, scores), value, top_k=1, value_weight=1.0)
+
+        self.assertEqual(ai.get_move(board, BLACK), (4, 1))
+
     def test_reranks_top_candidates_using_next_players_view(self):
         scores = [0.0] * 10
         scores[0], scores[1], scores[2] = 3.0, 2.0, 1.0
