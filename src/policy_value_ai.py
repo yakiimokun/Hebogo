@@ -5,7 +5,7 @@ import math
 import torch
 
 from .board_encoder import encode_board, point_to_index
-from .move_diagnostics import CandidateEvaluation, MoveAnalysis
+from .move_diagnostics import CandidateEvaluation, MoveAnalysis, TacticalMove
 from .policy_ai import PolicyAI
 from .rules import (
     BLACK, EMPTY, WHITE, Board, Point, group_and_liberties, legal_moves, play_move,
@@ -18,12 +18,12 @@ def _tactical_moves(
     legal: set[Point],
     previous_board=None,
     history=None,
-) -> dict[Point, tuple[int, int]]:
+) -> dict[Point, TacticalMove]:
     """取りと、着手後に2呼吸以上になるアタリ救出の候補を返す。"""
     size = len(board)
     visited: set[Point] = set()
     rescue_targets: dict[Point, list[tuple[Point, int]]] = {}
-    tactical_points: set[Point] = set()
+    capture_points: set[Point] = set()
 
     for y in range(size):
         for x in range(size):
@@ -34,12 +34,15 @@ def _tactical_moves(
             if len(liberties) != 1:
                 continue
             liberty = next(iter(liberties))
-            tactical_points.add(liberty)
             if board[y][x] == color:
                 rescue_targets.setdefault(liberty, []).append(((x, y), len(group)))
+            else:
+                # 相手の1呼吸の連は、Policy順位に関係なく取り候補にする。
+                capture_points.add(liberty)
 
-    result: dict[Point, tuple[int, int]] = {}
-    for point in tactical_points & legal:
+    candidate_points = capture_points | set(rescue_targets)
+    result: dict[Point, TacticalMove] = {}
+    for point in candidate_points & legal:
         played = play_move(board, *point, color, previous_board, history)
         if not played.legal:
             continue
@@ -52,7 +55,7 @@ def _tactical_moves(
             if len(liberties) > 1:
                 rescued += group_size
         if played.captured or rescued:
-            result[point] = (played.captured, rescued)
+            result[point] = TacticalMove(point, played.captured, rescued)
     return result
 
 
@@ -145,7 +148,9 @@ class PolicyValueAI:
         best_score = float("-inf")
         evaluations = []
         for point, value in zip(candidates, values[:, 0].tolist()):
-            captured, rescued = tactical.get(point, (0, 0))
+            tactical_move = tactical.get(point)
+            captured = tactical_move.captured_stones if tactical_move else 0
+            rescued = tactical_move.rescued_stones if tactical_move else 0
             # 救出石数を優先点にする。Valueの重みを上げれば、戦術候補
             # 同士を学習済みValueで比較する余地も維持される。
             rescue_priority = float(rescued)

@@ -82,6 +82,24 @@ class PolicyValueAITest(unittest.TestCase):
         self.assertEqual(capture.captured_stones, 1)
         self.assertEqual(capture.rescued_stones, 0)
 
+    def test_shared_liberty_captures_multiple_groups_outside_policy_top_k(self):
+        board = [
+            [WHITE, BLACK, 0],
+            [0, WHITE, BLACK],
+            [0, BLACK, 0],
+        ]
+        scores = [0.0] * 10
+        scores[8] = 1.0
+        ai = PolicyValueAI(
+            FixedPolicy(3, scores), RecordingValue(3, [0.0, 0.0, 0.0]), top_k=1
+        )
+
+        ai.get_move(board, BLACK)
+        capture = next(item for item in ai.last_analysis.candidates
+                       if item.move == (0, 1))
+        self.assertEqual(capture.captured_stones, 2)
+        self.assertEqual(capture.rescued_stones, 0)
+
     def test_prefers_rescuing_larger_group(self):
         board = [
             [BLACK, WHITE, 0, WHITE, BLACK],

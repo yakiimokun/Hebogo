@@ -6,6 +6,15 @@ from .rules import Point
 
 
 @dataclass(frozen=True)
+class TacticalMove:
+    """Policy順位とは別に評価する取り・救出候補。"""
+
+    move: Point
+    captured_stones: int
+    rescued_stones: int
+
+
+@dataclass(frozen=True)
 class CandidateEvaluation:
     """PolicyValue AIが評価した一つの候補手。"""
 
