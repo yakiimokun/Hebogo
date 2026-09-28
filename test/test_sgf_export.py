@@ -22,6 +22,7 @@ class DiagnosticSGFTest(unittest.TestCase):
                 CandidateEvaluation(
                     (3, 3), 0.00284, 0.54, 0.00230,
                     captured_stones=2, rescued_stones=3, rescue_priority=3.0,
+                    self_atari_stones=4, immediate_loss_stones=4, risk_penalty=4.0,
                 ),
                 CandidateEvaluation(None, 0.00269, 0.39, 0.00230),
             ),
@@ -49,6 +50,9 @@ class DiagnosticSGFTest(unittest.TestCase):
         self.assertIn("value=0.39", sgf)
         self.assertIn("captured=2", sgf)
         self.assertIn("rescued=3", sgf)
+        self.assertIn("self_atari=4", sgf)
+        self.assertIn("immediate_loss=4", sgf)
+        self.assertIn("risk_penalty=4", sgf)
         self.assertIn("Policy weight: 1", sgf)
         self.assertTrue(sgf.endswith(";PL[W]C[Current turn: W])\n"))
 

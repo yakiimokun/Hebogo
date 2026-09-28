@@ -38,6 +38,9 @@ def _analysis_comment(analysis: MoveAnalysis, board_size: int) -> str:
             f"policy={candidate.policy_probability:.9g} | "
             f"value={candidate.value:.9g} | captured={candidate.captured_stones} | "
             f"rescued={candidate.rescued_stones} | "
+            f"self_atari={candidate.self_atari_stones} | "
+            f"immediate_loss={candidate.immediate_loss_stones} | "
+            f"risk_penalty={candidate.risk_penalty:.9g} | "
             f"combined={candidate.combined_score:.9g}"
         )
     return "\n".join(lines)

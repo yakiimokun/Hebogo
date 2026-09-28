@@ -5,7 +5,7 @@ import math
 import torch
 
 from .board_encoder import encode_board, point_to_index
-from .move_diagnostics import CandidateEvaluation, MoveAnalysis, TacticalMove
+from .move_diagnostics import CandidateEvaluation, MoveAnalysis, MoveRisk, TacticalMove
 from .policy_ai import PolicyAI
 from .rules import (
     BLACK, EMPTY, WHITE, Board, Point, group_and_liberties, legal_moves, play_move,
@@ -57,6 +57,53 @@ def _tactical_moves(
         if played.captured or rescued:
             result[point] = TacticalMove(point, played.captured, rescued)
     return result
+
+
+def _assess_immediate_risk(
+    board_before: Board,
+    board_after: Board,
+    move: Point | None,
+    color: int,
+    history=None,
+) -> MoveRisk:
+    """相手が次の一手で取れる最大石数を候補着手のリスクとして返す。"""
+    self_atari_stones = 0
+    if move is not None:
+        group, liberties = group_and_liberties(board_after, *move)
+        if len(liberties) == 1:
+            self_atari_stones = len(group)
+
+    visited: set[Point] = set()
+    capture_points: set[Point] = set()
+    size = len(board_after)
+    for y in range(size):
+        for x in range(size):
+            if board_after[y][x] != color or (x, y) in visited:
+                continue
+            group, liberties = group_and_liberties(board_after, x, y)
+            visited.update(group)
+            if len(liberties) == 1:
+                capture_points.add(next(iter(liberties)))
+
+    next_history = tuple(history) if history is not None else ()
+    next_history += (board_before,)
+    immediate_loss_stones = 0
+    for point in capture_points:
+        reply = play_move(
+            board_after,
+            *point,
+            -color,
+            previous_board=board_before,
+            history=next_history,
+        )
+        if reply.legal:
+            immediate_loss_stones = max(immediate_loss_stones, reply.captured)
+
+    return MoveRisk(
+        self_atari_stones=self_atari_stones,
+        immediate_loss_stones=immediate_loss_stones,
+        penalty=float(immediate_loss_stones),
+    )
 
 
 class PolicyValueAI:
@@ -134,6 +181,10 @@ class PolicyValueAI:
             else:
                 result = play_move(board, *point, color, previous_board, history)
                 next_boards.append(result.board)
+        risks = [
+            _assess_immediate_risk(board, next_board, point, color, history)
+            for point, next_board in zip(candidates, next_boards)
+        ]
         value_inputs = torch.stack(
             [encode_board(next_board, -color) for next_board in next_boards]
         )
@@ -147,7 +198,7 @@ class PolicyValueAI:
         best_move = None
         best_score = float("-inf")
         evaluations = []
-        for point, value in zip(candidates, values[:, 0].tolist()):
+        for point, value, risk in zip(candidates, values[:, 0].tolist(), risks):
             tactical_move = tactical.get(point)
             captured = tactical_move.captured_stones if tactical_move else 0
             rescued = tactical_move.rescued_stones if tactical_move else 0
@@ -158,6 +209,7 @@ class PolicyValueAI:
                 self.policy_weight * policy_scores[point_to_index(point, size)]
                 - self.value_weight * value
                 + rescue_priority
+                - risk.penalty
             )
             evaluations.append(CandidateEvaluation(
                 move=point,
@@ -167,6 +219,9 @@ class PolicyValueAI:
                 captured_stones=captured,
                 rescued_stones=rescued,
                 rescue_priority=rescue_priority,
+                self_atari_stones=risk.self_atari_stones,
+                immediate_loss_stones=risk.immediate_loss_stones,
+                risk_penalty=risk.penalty,
             ))
             if score > best_score:
                 best_move, best_score = point, score

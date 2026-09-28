@@ -15,6 +15,15 @@ class TacticalMove:
 
 
 @dataclass(frozen=True)
+class MoveRisk:
+    """候補着手後に相手の次の一手で生じる石の損失リスク。"""
+
+    self_atari_stones: int
+    immediate_loss_stones: int
+    penalty: float
+
+
+@dataclass(frozen=True)
 class CandidateEvaluation:
     """PolicyValue AIが評価した一つの候補手。"""
 
@@ -25,6 +34,9 @@ class CandidateEvaluation:
     captured_stones: int = 0
     rescued_stones: int = 0
     rescue_priority: float = 0.0
+    self_atari_stones: int = 0
+    immediate_loss_stones: int = 0
+    risk_penalty: float = 0.0
 
 
 @dataclass(frozen=True)

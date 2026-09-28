@@ -30,6 +30,55 @@ class RecordingValue(torch.nn.Module):
 
 
 class PolicyValueAITest(unittest.TestCase):
+    def test_penalizes_non_capturing_self_atari(self):
+        board = [
+            [0, 0, 0, 0, 0],
+            [0, 0, WHITE, 0, 0],
+            [0, WHITE, 0, WHITE, 0],
+            [0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0],
+        ]
+        scores = [0.0] * 26
+        scores[12] = 1.0  # C3は着手した1子が自己アタリになる。
+        scores[0] = 0.9
+        ai = PolicyValueAI(
+            FixedPolicy(5, scores), RecordingValue(5, [0.0, 0.0, 0.0]), top_k=2
+        )
+
+        self.assertEqual(ai.get_move(board, BLACK), (0, 0))
+        self_atari = next(item for item in ai.last_analysis.candidates
+                          if item.move == (2, 2))
+        self.assertEqual(self_atari.self_atari_stones, 1)
+        self.assertEqual(self_atari.immediate_loss_stones, 1)
+        self.assertEqual(self_atari.risk_penalty, 1.0)
+
+    def test_penalizes_move_that_leaves_large_group_to_immediate_capture(self):
+        board = [
+            [BLACK, WHITE, 0, 0, 0],
+            [BLACK, WHITE, 0, 0, 0],
+            [0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0],
+        ]
+        scores = [0.0] * 26
+        scores[12] = 1.0
+        ai = PolicyValueAI(
+            FixedPolicy(5, scores), RecordingValue(5, [0.0, 0.0, 0.0]), top_k=1
+        )
+
+        self.assertEqual(ai.get_move(board, BLACK), (0, 2))
+        ignored_group = next(item for item in ai.last_analysis.candidates
+                             if item.move == (2, 2))
+        rescue = next(item for item in ai.last_analysis.candidates
+                      if item.move == (0, 2))
+        passed = next(item for item in ai.last_analysis.candidates
+                      if item.move is None)
+        self.assertEqual(ignored_group.self_atari_stones, 0)
+        self.assertEqual(ignored_group.immediate_loss_stones, 2)
+        self.assertEqual(ignored_group.risk_penalty, 2.0)
+        self.assertEqual(rescue.immediate_loss_stones, 0)
+        self.assertEqual(passed.immediate_loss_stones, 2)
+
     def test_adds_successful_rescue_outside_policy_top_k_and_records_stones(self):
         board = [
             [BLACK, WHITE, 0],
