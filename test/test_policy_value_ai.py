@@ -30,6 +30,47 @@ class RecordingValue(torch.nn.Module):
 
 
 class PolicyValueAITest(unittest.TestCase):
+    def test_pass_beats_destroying_benson_two_eye_life(self):
+        board = [[BLACK] * 5 for _ in range(5)]
+        board[1][1] = board[1][3] = 0
+        scores = [0.0] * 26
+        scores[6] = 10.0
+        ai = PolicyValueAI(
+            FixedPolicy(5, scores), RecordingValue(5, [0.0, 0.0]), top_k=1
+        )
+        self.assertIsNone(ai.get_move(board, BLACK))
+        eye = ai.last_analysis.candidates[0]
+        self.assertTrue(eye.fills_own_eye)
+        self.assertEqual(eye.lost_alive_stones, 23)
+        self.assertGreater(eye.benson_penalty, 0)
+        self.assertEqual(ai.last_analysis.own_benson_alive_stones, 23)
+        self.assertEqual(ai.last_analysis.candidates[-1].benson_penalty, 0)
+
+    def test_eye_filling_top_k_does_not_hide_normal_moves(self):
+        board = [[BLACK] * 5 for _ in range(5)]
+        board[1][1] = board[1][3] = 0
+        board[3] = [0] * 5
+        board[4] = [0] * 5  # 2列幅の外側には、この連に隣接しない空点がある。
+        scores = [0.0] * 26
+        scores[6], scores[22] = 10.0, 9.0
+        ai = PolicyValueAI(
+            FixedPolicy(5, scores), RecordingValue(5, [0.0] * 3), top_k=1
+        )
+        self.assertEqual(ai.get_move(board, BLACK), (2, 4))
+        self.assertEqual(len(ai.last_analysis.candidates), 3)
+
+    def test_unknown_life_does_not_forbid_pass(self):
+        board = [[0] * 5 for _ in range(5)]
+        board[2][2] = BLACK
+        scores = [0.0] * 26
+        scores[-1] = 10.0
+        ai = PolicyValueAI(
+            FixedPolicy(5, scores), RecordingValue(5, [0.0, 0.0]), top_k=1
+        )
+        self.assertIsNone(ai.get_move(board, BLACK))
+        self.assertEqual(ai.last_analysis.own_benson_alive_stones, 0)
+        self.assertTrue(all(item.benson_penalty == 0 for item in ai.last_analysis.candidates))
+
     def test_penalizes_non_capturing_self_atari(self):
         board = [
             [0, 0, 0, 0, 0],

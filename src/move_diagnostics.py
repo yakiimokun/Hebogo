@@ -37,6 +37,10 @@ class CandidateEvaluation:
     self_atari_stones: int = 0
     immediate_loss_stones: int = 0
     risk_penalty: float = 0.0
+    fills_own_eye: bool = False
+    invades_alive_eye: bool = False
+    lost_alive_stones: int = 0
+    benson_penalty: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -47,6 +51,8 @@ class MoveAnalysis:
     policy_weight: float
     value_weight: float
     candidates: tuple[CandidateEvaluation, ...]
+    own_benson_alive_stones: int = 0
+    opponent_benson_alive_stones: int = 0
 
 
 @dataclass(frozen=True)

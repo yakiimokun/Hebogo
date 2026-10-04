@@ -5,6 +5,7 @@ import math
 import torch
 
 from .board_encoder import encode_board, point_to_index
+from .benson import BensonMoveAssessment, analyze_benson
 from .move_diagnostics import CandidateEvaluation, MoveAnalysis, MoveRisk, TacticalMove
 from .policy_ai import PolicyAI
 from .rules import (
@@ -169,7 +170,14 @@ class PolicyValueAI:
         tactical = _tactical_moves(
             board, color, set(legal), previous_board=previous_board, history=history
         )
-        candidates = list(dict.fromkeys(ranked[:self.top_k] + sorted(tactical))) + [None]
+        own_life = analyze_benson(board, color)
+        opponent_life = analyze_benson(board, -color)
+        eye_points = own_life.empty_eye_points | opponent_life.empty_eye_points
+        policy_candidates = ranked[:self.top_k]
+        if any(point in eye_points for point in policy_candidates):
+            # 眼埋めが上位枠を占めても、通常手とPASSを比較できるよう補完する。
+            policy_candidates += [point for point in ranked if point not in eye_points][:self.top_k]
+        candidates = list(dict.fromkeys(policy_candidates + sorted(tactical))) + [None]
         legal_indices = [point_to_index(point, size) for point in legal] + [size * size]
         probabilities = torch.softmax(scores[legal_indices], dim=0)
         policy_scores = dict(zip(legal_indices, probabilities.tolist()))
@@ -185,6 +193,10 @@ class PolicyValueAI:
             _assess_immediate_risk(board, next_board, point, color, history)
             for point, next_board in zip(candidates, next_boards)
         ]
+        benson_assessments = [
+            BensonMoveAssessment.evaluate(next_board, point, own_life, opponent_life)
+            for point, next_board in zip(candidates, next_boards)
+        ]
         value_inputs = torch.stack(
             [encode_board(next_board, -color) for next_board in next_boards]
         )
@@ -198,7 +210,9 @@ class PolicyValueAI:
         best_move = None
         best_score = float("-inf")
         evaluations = []
-        for point, value, risk in zip(candidates, values[:, 0].tolist(), risks):
+        for point, value, risk, benson in zip(
+            candidates, values[:, 0].tolist(), risks, benson_assessments
+        ):
             tactical_move = tactical.get(point)
             captured = tactical_move.captured_stones if tactical_move else 0
             rescued = tactical_move.rescued_stones if tactical_move else 0
@@ -210,6 +224,7 @@ class PolicyValueAI:
                 - self.value_weight * value
                 + rescue_priority
                 - risk.penalty
+                - benson.penalty
             )
             evaluations.append(CandidateEvaluation(
                 move=point,
@@ -222,6 +237,10 @@ class PolicyValueAI:
                 self_atari_stones=risk.self_atari_stones,
                 immediate_loss_stones=risk.immediate_loss_stones,
                 risk_penalty=risk.penalty,
+                fills_own_eye=benson.fills_own_eye,
+                invades_alive_eye=benson.invades_alive_eye,
+                lost_alive_stones=benson.lost_alive_stones,
+                benson_penalty=benson.penalty,
             ))
             if score > best_score:
                 best_move, best_score = point, score
@@ -230,5 +249,7 @@ class PolicyValueAI:
             policy_weight=self.policy_weight,
             value_weight=self.value_weight,
             candidates=tuple(evaluations),
+            own_benson_alive_stones=len(own_life.alive_stones),
+            opponent_benson_alive_stones=len(opponent_life.alive_stones),
         )
         return best_move

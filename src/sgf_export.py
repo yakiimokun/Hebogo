@@ -29,6 +29,8 @@ def _analysis_comment(analysis: MoveAnalysis, board_size: int) -> str:
         f"AI selected: {_move_name(analysis.selected_move, board_size)}",
         f"Policy weight: {analysis.policy_weight:.9g}",
         f"Value weight: {analysis.value_weight:.9g}",
+        f"Benson alive stones: own={analysis.own_benson_alive_stones}, "
+        f"opponent={analysis.opponent_benson_alive_stones}",
         "Candidates (combined score order):",
     ]
     ranked = sorted(analysis.candidates, key=lambda item: item.combined_score, reverse=True)
@@ -41,6 +43,10 @@ def _analysis_comment(analysis: MoveAnalysis, board_size: int) -> str:
             f"self_atari={candidate.self_atari_stones} | "
             f"immediate_loss={candidate.immediate_loss_stones} | "
             f"risk_penalty={candidate.risk_penalty:.9g} | "
+            f"own_eye={int(candidate.fills_own_eye)} | "
+            f"opponent_eye={int(candidate.invades_alive_eye)} | "
+            f"lost_alive={candidate.lost_alive_stones} | "
+            f"benson_penalty={candidate.benson_penalty:.9g} | "
             f"combined={candidate.combined_score:.9g}"
         )
     return "\n".join(lines)

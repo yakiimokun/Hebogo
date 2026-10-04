@@ -23,9 +23,12 @@ class DiagnosticSGFTest(unittest.TestCase):
                     (3, 3), 0.00284, 0.54, 0.00230,
                     captured_stones=2, rescued_stones=3, rescue_priority=3.0,
                     self_atari_stones=4, immediate_loss_stones=4, risk_penalty=4.0,
+                    fills_own_eye=True, lost_alive_stones=10, benson_penalty=10.0,
                 ),
                 CandidateEvaluation(None, 0.00269, 0.39, 0.00230),
             ),
+            own_benson_alive_stones=10,
+            opponent_benson_alive_stones=12,
         )
 
     def test_exports_moves_pass_players_turn_and_analysis(self):
@@ -53,6 +56,10 @@ class DiagnosticSGFTest(unittest.TestCase):
         self.assertIn("self_atari=4", sgf)
         self.assertIn("immediate_loss=4", sgf)
         self.assertIn("risk_penalty=4", sgf)
+        self.assertIn("Benson alive stones: own=10, opponent=12", sgf)
+        self.assertIn("own_eye=1", sgf)
+        self.assertIn("lost_alive=10", sgf)
+        self.assertIn("benson_penalty=10", sgf)
         self.assertIn("Policy weight: 1", sgf)
         self.assertTrue(sgf.endswith(";PL[W]C[Current turn: W])\n"))
 
