@@ -1,4 +1,5 @@
 {
+    "ogs_origin": "https://online-go.com",
     "katago": {
         "binary_path": "/path/to/katago",
         "model_path": "/path/to/model.bin.gz",
