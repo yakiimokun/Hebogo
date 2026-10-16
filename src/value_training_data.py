@@ -4,11 +4,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-import random
 
 import numpy as np
 
 from .sgf_dataset import SGFError, SUPPORTED_BOARD_SIZES, DatasetSample, samples_from_sgf
+from .training_split import fixed_game_split
 
 
 @dataclass(frozen=True)
@@ -44,7 +44,22 @@ def load_value_splits(
     validation_fraction: float = 0.2,
     seed: int = 42,
 ) -> ValueDataSplit:
-    """SGF を棋譜単位で分割し、手番視点の盤面・勝敗を返す。"""
+    """検証棋譜を固定して分割し、手番視点の盤面・勝敗を返す。
+
+    Args:
+        input_dir: SGF の入力先。盤面サイズ別の分割 JSON もここに保存する。
+        board_size: 対象の盤面サイズ（9・13・19）。
+        validation_fraction: 初回の検証割合。保存後の検証棋譜は変えない。
+            0 は未保存時のみ検証を無効化する。
+        seed: 初回の分割用乱数シード。
+
+    Returns:
+        訓練・検証局面と教師ラベル、使用棋譜・除外棋譜の一覧。
+
+    Raises:
+        ValueError: 引数・分割履歴が不正、棋譜不足、検証棋譜の欠落・変更。
+        OSError: 入力先や分割ファイルを読み書きできない場合。
+    """
     input_dir = Path(input_dir)
     if board_size not in SUPPORTED_BOARD_SIZES:
         raise ValueError(f"未対応の盤面サイズです: {board_size}")
@@ -74,12 +89,9 @@ def load_value_splits(
     if validation_fraction > 0 and len(games) < 2:
         raise ValueError("検証データを分けるには有効な棋譜が 2 件以上必要です")
 
-    random.Random(seed).shuffle(games)
-    validation_count = 0
-    if validation_fraction > 0:
-        validation_count = max(1, min(len(games) - 1, int(len(games) * validation_fraction)))
-    validation_games = games[:validation_count]
-    train_games = games[validation_count:]
+    train_games, validation_games = fixed_game_split(
+        games, input_dir, board_size, validation_fraction, seed
+    )
     train_boards, train_values = _arrays(train_games, board_size)
     validation_boards, validation_values = _arrays(validation_games, board_size)
     return ValueDataSplit(
