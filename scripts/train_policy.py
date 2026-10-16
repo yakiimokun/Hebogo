@@ -53,6 +53,8 @@ def _arguments(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--validation-fraction", type=_validation_fraction, default=0.2)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--device", choices=("auto", "cpu"), default="auto")
+    parser.add_argument("--augment", action=argparse.BooleanOptionalAction, default=True,
+                        help="訓練局面をランダムに回転・反転する（既定は有効、--no-augment で無効）")
     return parser.parse_args(argv)
 
 
@@ -62,17 +64,77 @@ def _encode_boards(boards: np.ndarray) -> torch.Tensor:
     return torch.from_numpy(channels.astype(np.float32))
 
 
+def _transform_sample(
+    board: torch.Tensor, move: torch.Tensor, symmetry: int,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """3面の盤面と正解手を同じ対称変換で移し、パスは維持する。
+
+    Args:
+        board: 形状 (3, N, N) の入力盤面。
+        move: 行優先の着手インデックス。N² はパス。
+        symmetry: 0〜7。下位2ビットは反時計回りの90度回転数、
+            4以上なら回転後に左右反転する。
+
+    Returns:
+        変換後の盤面と正解手。元のテンソルは変更しない。
+    """
+    size = board.shape[-1]
+    rotations = symmetry % 4
+    transformed = torch.rot90(board, rotations, dims=(-2, -1))
+    index = int(move)
+    if index != size * size:
+        y, x = divmod(index, size)
+        for _ in range(rotations):
+            x, y = y, size - 1 - x
+        if symmetry >= 4:
+            x = size - 1 - x
+        index = y * size + x
+    if symmetry >= 4:
+        transformed = transformed.flip(-1)
+    return transformed.contiguous(), move.new_tensor(index)
+
+
+class _AugmentedPolicyDataset(TensorDataset):
+    """読み出すたびに8通りから1つ選び、局面と正解手を変換する。"""
+
+    def __init__(self, boards: torch.Tensor, moves: torch.Tensor, seed: int):
+        """入力と正解手、変換用の独立した乱数系列を初期化する。
+
+        Args:
+            boards: 形状 (N, 3, H, W) の入力盤面。
+            moves: 各局面の正解手インデックス。
+            seed: 対称変換用の乱数シード。
+        """
+        super().__init__(boards, moves)
+        self._generator = torch.Generator().manual_seed(seed)
+
+    def __getitem__(self, index: int) -> tuple[torch.Tensor, torch.Tensor]:
+        """指定局面と正解手をランダムに同時変換して返す。
+
+        Args:
+            index: 読み出す局面の位置。
+
+        Returns:
+            回転・反転済みの入力盤面と正解手。
+        """
+        board, move = super().__getitem__(index)
+        symmetry = int(torch.randint(8, (), generator=self._generator))
+        return _transform_sample(board, move, symmetry)
+
+
 def _loader(
     boards: np.ndarray,
     moves: np.ndarray,
     batch_size: int,
     shuffle: bool,
     seed: int,
+    augment: bool = False,
 ) -> DataLoader:
-    dataset = TensorDataset(
-        _encode_boards(boards),
-        torch.from_numpy(np.asarray(moves, dtype=np.int64)),
-    )
+    """局面を読み込み時に変換するローダーを作る。既定では変換しない。"""
+    inputs = _encode_boards(boards)
+    targets = torch.from_numpy(np.asarray(moves, dtype=np.int64))
+    dataset = (_AugmentedPolicyDataset(inputs, targets, seed) if augment
+               else TensorDataset(inputs, targets))
     generator = torch.Generator().manual_seed(seed) if shuffle else None
     return DataLoader(dataset, batch_size=batch_size, shuffle=shuffle, generator=generator)
 
@@ -119,6 +181,14 @@ def _epoch(
 
 
 def main(argv: list[str] | None = None) -> int:
+    """棋譜を分割し、訓練局面だけを拡張して Policy を学習する。
+
+    Args:
+        argv: コマンド引数。None の場合はプロセスの引数を使用する。
+
+    Returns:
+        正常終了時は0、データや保存処理のエラー時は1。
+    """
     args = _arguments(argv)
     output = args.output or Path(
         f"data/sgf/processed/policy_{args.board_size}x{args.board_size}.pt"
@@ -153,8 +223,10 @@ def main(argv: list[str] | None = None) -> int:
         model = PolicyNetwork(args.board_size).to(device)
         optimizer = torch.optim.AdamW(model.parameters(), lr=args.learning_rate)
         train_loader = _loader(
-            splits.train_boards, splits.train_moves, args.batch_size, True, args.seed
+            splits.train_boards, splits.train_moves, args.batch_size, True, args.seed,
+            augment=args.augment,
         )
+        print("訓練データ拡張: " + ("回転・反転8通りから局面ごとにランダム選択" if args.augment else "無効"))
         validation_loader = (
             _loader(
                 splits.validation_boards,

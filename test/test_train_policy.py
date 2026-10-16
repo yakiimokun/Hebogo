@@ -5,15 +5,81 @@ import io
 from pathlib import Path
 import tempfile
 import unittest
+from unittest.mock import patch
 
 import numpy as np
 import torch
 
-from scripts.train_policy import _encode_boards, main
+from scripts.train_policy import _encode_boards, _loader, _transform_sample, main
 from src.policy_network import PolicyNetwork
 
 
 class PolicyTrainingTest(unittest.TestCase):
+    def test_all_symmetries_move_stones_and_target_together(self):
+        """9・13・19路の全対称変換で石・正解手・パスの対応を保つ。"""
+        for size in (9, 13, 19):
+            board = torch.zeros(3, size, size)
+            board[0] = 1
+            board[0, 2, 1] = 0
+            board[1, 2, 1] = 1
+            board[0, 0, 0] = 0
+            board[2, 0, 0] = 1
+            original = board.clone()
+            # 元の (x, y)=(1, 2) の各変換後の座標。
+            points = [(1, 2), (2, size - 2), (size - 2, size - 3), (size - 3, 1),
+                      (size - 2, 2), (size - 3, size - 2), (1, size - 3), (2, 1)]
+            variants = []
+            for symmetry, (x, y) in enumerate(points):
+                with self.subTest(size=size, symmetry=symmetry):
+                    transformed, target = _transform_sample(board, torch.tensor(2 * size + 1), symmetry)
+                    self.assertEqual(int(target), y * size + x)
+                    self.assertEqual(transformed[:, y, x].tolist(), [0, 1, 0])
+                    self.assertEqual(transformed[2].sum().item(), 1)
+                    self.assertTrue(torch.equal(transformed.sum(0), torch.ones(size, size)))
+                    self.assertEqual(transformed.shape, board.shape)
+                    self.assertEqual(target.dtype, torch.int64)
+                    _, target_pass = _transform_sample(board, torch.tensor(size * size), symmetry)
+                    self.assertEqual(int(target_pass), size * size)
+                    variants.append(transformed.numpy().tobytes())
+            self.assertEqual(len(set(variants)), 8)
+            self.assertTrue(torch.equal(board, original))
+
+    def test_loader_augmentation_is_reproducible_and_validation_unchanged(self):
+        """同じ seed の変換を再現し、無効時は元の盤面と正解手を返す。"""
+        boards = np.zeros((32, 9, 9), dtype=np.int8)
+        boards[:, 2, 1] = 1
+        moves = np.full(32, 19, dtype=np.int64)
+        first = _loader(boards, moves, 32, True, 42, augment=True)
+        second = _loader(boards, moves, 32, True, 42, augment=True)
+        batches = []
+        for _ in range(2):
+            batch, target = next(iter(first))
+            other_batch, other_target = next(iter(second))
+            self.assertTrue(torch.equal(batch, other_batch))
+            self.assertTrue(torch.equal(target, other_target))
+            self.assertEqual(batch.shape, (32, 3, 9, 9))
+            self.assertTrue(torch.equal(batch[:, 1].flatten(1).argmax(1), target))
+            batches.append(target)
+        self.assertFalse(torch.equal(batches[0], batches[1]))
+        validation = _loader(boards, moves, 32, False, 42)
+        for _ in range(2):
+            batch, target = next(iter(validation))
+            self.assertTrue(torch.equal(batch, _encode_boards(boards)))
+            self.assertEqual(target.tolist(), moves.tolist())
+        self.assertTrue(np.all(boards[:, 2, 1] == 1))
+
+    def test_cli_augments_only_training_and_supports_opt_out(self):
+        """CLI は訓練だけ拡張し、無効化しても検証を継続する。"""
+        self._sgf("first.sgf", "aa")
+        self._sgf("second.sgf", "cc")
+        for extra, expected in (((), True), (("--no-augment",), False)):
+            with patch("scripts.train_policy._loader", wraps=_loader) as loader:
+                status, output, errors = self._run(*extra)
+            self.assertEqual(status, 0, errors)
+            self.assertEqual(loader.call_args_list[0].kwargs["augment"], expected)
+            self.assertFalse(loader.call_args_list[1].kwargs.get("augment", False))
+            self.assertIn("validation loss=", output)
+
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()
         self.addCleanup(self.temporary.cleanup)
